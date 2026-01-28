@@ -1,0 +1,7 @@
+*.db
+*.sqlite
+static/uploads/
+__pycache__/
+*.pyc
+venv/
+*.backup.*
