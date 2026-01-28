@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}KTV အရောင်းစနစ်{% endblock %}</title>
+    
+    <!-- Pyidaungsu Font and Icons -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Additional CSS per page -->
+    {% block extra_css %}{% endblock %}
+    
+    <style>
+        /* Additional inline styles if needed */
+        .text-burmese {
+            font-family: 'Pyidaungsu', 'Noto Sans Myanmar', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Toggle Button (Mobile) -->
+    <button class="sidebar-toggle" id="sidebarToggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Navigation (Left Side) - SMALLER VERSION -->
+    <nav class="sidebar" id="sidebar">
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <div class="user-details">
+                <h3>{% if current_user.is_authenticated %}{{ current_user.full_name }}{% else %}အက်မင်{% endif %}</h3>
+                <p>အဆင့်: {% if current_user.is_authenticated %}{{ current_user.role }}{% else %}အက်မင်{% endif %}</p>
+                <p id="login-time">လော့ဂ်အင်: <span id="current-login-time">{% if current_user.is_authenticated %}ယခု{% else %}၀၈:၁၅{% endif %}</span></p>
+            </div>
+        </div>
+        
+        <ul class="nav-menu">
+            <li><a href="{{ url_for('dashboard') }}" {% if request.path == '/dashboard' %}class="active"{% endif %}>
+                <i class="fas fa-tachometer-alt"></i> <span>ဒက်ရှ်ဘုတ်</span>
+            </a></li>
+            <li><a href="{{ url_for('sale') }}" {% if request.path == '/sale' %}class="active"{% endif %}>
+                <i class="fas fa-shopping-cart"></i> <span>အရောင်း</span>
+            </a></li>
+            <li><a href="{{ url_for('rooms') }}" {% if request.path == '/rooms' %}class="active"{% endif %}>
+                <i class="fas fa-door-closed"></i> <span>အခန်းများ</span>
+            </a></li>
+            <li><a href="{{ url_for('menu') }}" {% if request.path == '/menu' %}class="active"{% endif %}>
+                <i class="fas fa-utensils"></i> <span>မီနူးနှင့် ပစ္စည်း</span>
+            </a></li>
+            <li><a href="/stocks">
+                <i class="fas fa-boxes"></i> <span>ပစ္စည်း အဝင်/အထွက်</span>
+            </a></li>
+            <li><a href="{{ url_for('reports') }}" {% if request.path == '/reports' %}class="active"{% endif %}>
+                <i class="fas fa-chart-line"></i> <span>အမြတ်/အရှုံး</span>
+            </a></li>
+            <li><a href="#">
+                <i class="fas fa-history"></i> <span>အရောင်းမှတ်တမ်း</span>
+            </a></li>
+        </ul>
+        
+        <div class="system-info">
+            <p><i class="fas fa-database"></i> <span>Database: <span id="db-size">၀.၇ MB</span></span></p>
+            <div class="backup-section">
+                <button class="btn-backup"><i class="fas fa-download"></i> <span>Database ကူးယူမည်</span></button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+        <div class="page-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-top">
+                    <h1><i class="fas fa-microphone-alt"></i> SMILE WORLD KTV</h1>
+                    <div class="restaurant-info">
+                        <p>မြို့ရှောင်လမ်း၊ မှော်ဘီမြို့</p>
+                        <div class="contact-info">
+                            <i class="fas fa-phone"></i> 
+                            <span>ဖုန်း - ၀၉-၄၂၅၅၇၃၅၉၈ | </span>
+                            <i class="fas fa-database"></i>
+                            <span id="db-count">၅၈</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div id="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category if category != 'error' else 'error' }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <!-- Page Specific Content -->
+            {% block content %}{% endblock %}
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p>&copy; 2026 SMILE WORLD KTV. Database: <span id="db-size-footer">0.7 MB</span> | Mode: <span id="current-mode">{% block mode %}{% endblock %}</span></p>
+                <div class="footer-links">
+                    <a href="/settings"><i class="fas fa-cog"></i> ဆက်တင်များ</a>
+                    <a href="#"><i class="fas fa-question-circle"></i> အကူအညီ</a>
+                    <a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> ထွက်မည်</a>
+                </div>
+            </footer>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- JavaScript -->
+    <!-- Utility Functions -->
+    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/base.js') }}"></script>
+    
+    <!-- Page Specific JavaScript -->
+    {% block extra_js %}{% endblock %}
+    
+    <script>
+        // Initialize date and time
+        function updateDateTime() {
+            const now = new Date();
+            const day = now.getDate().toString().padStart(2, '0');
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            
+            // Format in Myanmar style
+            const dateStr = `${day}-${month}-${year}`;
+            const timeStr = `${hours}:${minutes}`;
+            
+            // Update any date/time elements
+            document.querySelectorAll('.current-date').forEach(el => {
+                el.textContent = dateStr;
+            });
+            
+            document.querySelectorAll('.current-time').forEach(el => {
+                el.textContent = timeStr;
+            });
+        }
+        
+        // Initial call
+        updateDateTime();
+        
+        // Update every minute
+        setInterval(updateDateTime, 60000);
+        
+        // Sidebar toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const mainContent = document.getElementById('mainContent');
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('active');
+                });
+            }
+            
+            // Close sidebar when clicking outside on mobile
+            document.addEventListener('click', function(event) {
+                if (window.innerWidth <= 1024) {
+                    if (sidebar && !sidebar.contains(event.target) && 
+                        sidebarToggle && !sidebarToggle.contains(event.target) && 
+                        sidebar.classList.contains('active')) {
+                        sidebar.classList.remove('active');
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

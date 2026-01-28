@@ -1,0 +1,455 @@
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Rooms page loaded');
+    
+    // Load rooms from database
+    loadRooms();
+    
+    // Setup event listeners
+    setupEventListeners();
+    
+    // Update time
+    updateTime();
+    setInterval(updateTime, 60000);
+});
+
+function updateTime() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('my-MM', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+    });
+    
+    document.querySelectorAll('.current-time').forEach(el => {
+        el.textContent = timeStr;
+    });
+}
+
+function setupEventListeners() {
+    // Add room button
+    const addRoomBtn = document.getElementById('add-room-btn');
+    if (addRoomBtn) {
+        addRoomBtn.addEventListener('click', showAddRoomModal);
+    }
+    
+    // Search input
+    const searchInput = document.getElementById('room-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            filterRooms(this.value);
+        });
+    }
+    
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const status = this.dataset.status;
+            filterRoomsByStatus(status);
+        });
+    });
+}
+
+function loadRooms() {
+    const roomsGrid = document.getElementById('rooms-grid');
+    if (!roomsGrid) return;
+    
+    // Show loading
+    roomsGrid.innerHTML = `
+        <div class="loading-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>အခန်းများ ဖွင့်နေသည်...</p>
+        </div>
+    `;
+    
+    // Fetch rooms from API
+    fetch('/api/rooms')
+        .then(response => response.json())
+        .then(data => {
+            if (data.rooms) {
+                renderRooms(data.rooms);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading rooms:', error);
+            // Fallback to sample data
+            const rooms = getSampleRooms();
+            renderRooms(rooms);
+        });
+}
+
+function getSampleRooms() {
+    return [
+        { id: 1, room_number: 'R001', room_name: 'VIP 1', room_type: 'vip', status: 'available', capacity: 10, hourly_rate: 50000 },
+        { id: 2, room_number: 'R002', room_name: 'VIP 2', room_type: 'vip', status: 'available', capacity: 8, hourly_rate: 50000 },
+        { id: 3, room_number: 'R003', room_name: 'Standard 1', room_type: 'standard', status: 'available', capacity: 6, hourly_rate: 30000 },
+        { id: 4, room_number: 'R004', room_name: 'Standard 2', room_type: 'standard', status: 'available', capacity: 6, hourly_rate: 30000 },
+        { id: 5, room_number: 'R005', room_name: 'Family 1', room_type: 'family', status: 'available', capacity: 12, hourly_rate: 80000 }
+    ];
+}
+
+function renderRooms(rooms) {
+    const roomsGrid = document.getElementById('rooms-grid');
+    if (!roomsGrid) return;
+    
+    if (!rooms || rooms.length === 0) {
+        roomsGrid.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-door-closed fa-lg"></i>
+                <p>အခန်းများ မရှိပါ</p>
+                <button class="btn btn-primary mt-2" onclick="showAddRoomModal()">
+                    <i class="fas fa-plus"></i> အခန်းအသစ်ထည့်ရန်
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    rooms.forEach(room => {
+        const statusClass = getStatusClass(room.status);
+        const statusText = getStatusText(room.status);
+        const roomTypeText = getRoomTypeText(room.room_type);
+        
+        html += `
+            <div class="room-card ${statusClass}" data-id="${room.id}" data-status="${room.status}">
+                <div class="room-header">
+                    <div class="room-name">
+                        <h3>${room.room_name}</h3>
+                        <span class="room-type">${room.room_number} - ${roomTypeText}</span>
+                    </div>
+                    <div class="room-status">
+                        <span class="status-badge">${statusText}</span>
+                    </div>
+                </div>
+                
+                <div class="room-info">
+                    <div class="info-item">
+                        <i class="fas fa-user-friends"></i>
+                        <span>${room.capacity} ယောက်</span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-money-bill-wave"></i>
+                        <span>${room.hourly_rate.toLocaleString()} Ks/hour</span>
+                    </div>
+                </div>
+                
+                ${room.status === 'occupied' ? `
+                    <div class="room-details">
+                        <div class="detail-item">
+                            <i class="fas fa-clock"></i>
+                            <span>Occupied</span>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${room.status === 'reserved' ? `
+                    <div class="room-details">
+                        <div class="detail-item">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Reserved</span>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <div class="room-actions">
+                    ${room.status === 'available' ? `
+                        <button class="btn btn-success btn-sm" onclick="selectRoom(${room.id})">
+                            <i class="fas fa-play"></i> အသုံးပြုရန်
+                        </button>
+                        <button class="btn btn-warning btn-sm" onclick="reserveRoom(${room.id})">
+                            <i class="fas fa-calendar-plus"></i> ကြိုတင်ယူရန်
+                        </button>
+                    ` : ''}
+                    
+                    ${room.status === 'occupied' ? `
+                        <button class="btn btn-primary btn-sm" onclick="selectRoom(${room.id})">
+                            <i class="fas fa-shopping-cart"></i> Order ထည့်ရန်
+                        </button>
+                        <button class="btn btn-success btn-sm" onclick="checkoutRoom(${room.id})">
+                            <i class="fas fa-cash-register"></i> ငွေရှင်းရန်
+                        </button>
+                    ` : ''}
+                    
+                    ${room.status === 'reserved' ? `
+                        <button class="btn btn-primary btn-sm" onclick="occupyRoom(${room.id})">
+                            <i class="fas fa-check"></i> အတည်ပြုရန်
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="cancelReservation(${room.id})">
+                            <i class="fas fa-times"></i> ပယ်ဖျက်ရန်
+                        </button>
+                    ` : ''}
+                    
+                    ${room.status === 'cleaning' || room.status === 'maintenance' ? `
+                        <button class="btn btn-success btn-sm" onclick="markRoomAvailable(${room.id})">
+                            <i class="fas fa-check"></i> အဆင်သင့်ဖြစ်ပြီ
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    roomsGrid.innerHTML = html;
+}
+
+function getStatusClass(status) {
+    const classes = {
+        'available': 'status-available',
+        'occupied': 'status-occupied',
+        'reserved': 'status-reserved',
+        'cleaning': 'status-cleaning',
+        'maintenance': 'status-maintenance'
+    };
+    return classes[status] || 'status-available';
+}
+
+function getStatusText(status) {
+    const texts = {
+        'available': 'အဆင်သင့်',
+        'occupied': 'အသုံးပြုနေ',
+        'reserved': 'ကြိုတင်ယူထား',
+        'cleaning': 'သန့်ရှင်းရေး',
+        'maintenance': 'ပြင်ဆင်နေ'
+    };
+    return texts[status] || status;
+}
+
+function getRoomTypeText(type) {
+    const texts = {
+        'vip': 'VIP',
+        'standard': 'Standard',
+        'family': 'Family'
+    };
+    return texts[type] || type;
+}
+
+function filterRooms(searchText) {
+    const roomCards = document.querySelectorAll('.room-card');
+    if (!searchText) {
+        roomCards.forEach(card => card.style.display = 'block');
+        return;
+    }
+    
+    searchText = searchText.toLowerCase();
+    roomCards.forEach(card => {
+        const roomName = card.querySelector('.room-name h3').textContent.toLowerCase();
+        const roomNumber = card.querySelector('.room-type').textContent.toLowerCase();
+        
+        if (roomName.includes(searchText) || roomNumber.includes(searchText)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+function filterRoomsByStatus(status) {
+    const roomCards = document.querySelectorAll('.room-card');
+    
+    roomCards.forEach(card => {
+        const roomStatus = card.getAttribute('data-status');
+        
+        if (status === 'all' || roomStatus === status) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+// Room actions
+function selectRoom(roomId) {
+    // Redirect to sale page with room_id parameter
+    window.location.href = `/room/${roomId}/select`;
+}
+
+function occupyRoom(roomId) {
+    fetch('/api/update_room_status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            room_id: roomId,
+            status: 'occupied'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('အခန်းကို အသုံးပြုနေဟု မှတ်သားပြီးပါပြီ', 'success');
+            setTimeout(() => {
+                loadRooms();
+            }, 1000);
+        } else {
+            showToast('အခန်းအခြေအနေ ပြောင်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating room status:', error);
+        showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+    });
+}
+
+function reserveRoom(roomId) {
+    const customerName = prompt('ကျေးဇူးပြု၍ ဖောက်သည်အမည် ထည့်ပါ:');
+    if (!customerName) return;
+    
+    const reservationTime = prompt('ကြိုတင်ယူမည့် အချိန် (HH:MM):', '19:00');
+    if (!reservationTime) return;
+    
+    fetch('/api/update_room_status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            room_id: roomId,
+            status: 'reserved'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('အခန်းကို ကြိုတင်ယူပြီးပါပြီ', 'success');
+            setTimeout(() => {
+                loadRooms();
+            }, 1000);
+        } else {
+            showToast('အခန်းအခြေအနေ ပြောင်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating room status:', error);
+        showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+    });
+}
+
+function checkoutRoom(roomId) {
+    if (confirm('အခန်းကို Checkout လုပ်မှာသေချာပါသလား?')) {
+        // First go to sale page for checkout
+        window.location.href = `/sale?room_id=${roomId}&action=checkout`;
+    }
+}
+
+function cancelReservation(roomId) {
+    if (confirm('ကြိုတင်ယူမှုကို ပယ်ဖျက်မှာသေချာပါသလား?')) {
+        fetch('/api/update_room_status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                room_id: roomId,
+                status: 'available'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('ကြိုတင်ယူမှု ပယ်ဖျက်ပြီးပါပြီ', 'success');
+                setTimeout(() => {
+                    loadRooms();
+                }, 1000);
+            } else {
+                showToast('အခန်းအခြေအနေ ပြောင်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error updating room status:', error);
+            showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        });
+    }
+}
+
+function markRoomAvailable(roomId) {
+    fetch('/api/update_room_status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            room_id: roomId,
+            status: 'available'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('အခန်းကို အဆင်သင့်ဖြစ်ပါပြီ', 'success');
+            setTimeout(() => {
+                loadRooms();
+            }, 1000);
+        } else {
+            showToast('အခန်းအခြေအနေ ပြောင်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error updating room status:', error);
+        showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+    });
+}
+
+function showAddRoomModal() {
+    alert('အခန်းအသစ်ထည့်ရန် - ဤနေရာတွင် modal တစ်ခု ပေါ်လာမည်။');
+    // In real app, show a modal form
+}
+
+function showToast(message, type = 'info') {
+    // Create toast container if it doesn't exist
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = `
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        `;
+        document.body.appendChild(container);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    toast.style.cssText = `
+        padding: 12px 16px;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s ease;
+        font-family: 'Noto Sans Myanmar', sans-serif;
+        font-size: 13px;
+        min-width: 280px;
+        max-width: 350px;
+        color: white;
+    `;
+    
+    toast.innerHTML = message;
+    container.appendChild(toast);
+    
+    // Remove toast after 3 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// Make functions globally available
+window.selectRoom = selectRoom;
+window.occupyRoom = occupyRoom;
+window.reserveRoom = reserveRoom;
+window.checkoutRoom = checkoutRoom;
+window.cancelReservation = cancelReservation;
+window.markRoomAvailable = markRoomAvailable;
+window.showAddRoomModal = showAddRoomModal;

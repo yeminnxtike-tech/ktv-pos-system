@@ -1,0 +1,1200 @@
+"""
+KTV POS System - Complete Application
+ဗမာဘာသာဖြင့် ရေးသားထားသော KTV အရောင်းစနစ်
+"""
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+import os
+import sqlite3
+from datetime import datetime, date, timedelta
+import json
+import uuid
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+app.secret_key = 'ktv_pos_system_secret_key_2026'
+app.config['DATABASE'] = 'ktv_pos.db'
+app.config['UPLOAD_FOLDER'] = 'static/uploads/menu_images'
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB max file size
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+# Ensure upload directory exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# Database functions
+def get_db():
+    conn = sqlite3.connect(app.config['DATABASE'])
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Users table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'staff',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Rooms table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_number TEXT UNIQUE NOT NULL,
+            room_name TEXT,
+            room_type TEXT DEFAULT 'standard',
+            hourly_rate INTEGER DEFAULT 10000,
+            status TEXT DEFAULT 'available',  -- available, occupied, reserved, cleaning
+            capacity INTEGER DEFAULT 4,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Room Orders (temporary orders for rooms)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS room_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            order_data TEXT NOT NULL,  -- JSON data of order items
+            subtotal INTEGER DEFAULT 0,
+            tax INTEGER DEFAULT 0,
+            service_charge INTEGER DEFAULT 0,
+            total_amount INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',  -- pending, completed, cancelled
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (room_id) REFERENCES rooms (id)
+        )
+    ''')
+    
+    # Items/Categories table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            display_name TEXT,
+            icon_class TEXT,
+            color_code TEXT,
+            sort_order INTEGER DEFAULT 0
+        )
+    ''')
+    
+    # Menu Items table (with image support)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS menu_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category_id INTEGER,
+            sale_price INTEGER NOT NULL,
+            cost_price INTEGER,
+            stock INTEGER DEFAULT 0,
+            min_stock INTEGER DEFAULT 5,
+            unit TEXT DEFAULT 'ခု',
+            image_path TEXT,
+            status TEXT DEFAULT 'active',  -- active, inactive, out_of_stock
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (category_id) REFERENCES categories (id)
+        )
+    ''')
+    
+    # Sales table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bill_number TEXT UNIQUE NOT NULL,
+            room_id INTEGER,
+            customer_count INTEGER DEFAULT 1,
+            subtotal INTEGER NOT NULL,
+            tax_amount INTEGER DEFAULT 0,
+            service_charge INTEGER DEFAULT 0,
+            discount INTEGER DEFAULT 0,
+            total_amount INTEGER NOT NULL,
+            payment_method TEXT DEFAULT 'cash',
+            payment_status TEXT DEFAULT 'paid',  -- paid, pending, cancelled
+            staff_id INTEGER,
+            sale_date DATE DEFAULT CURRENT_DATE,
+            sale_time TIME DEFAULT CURRENT_TIME,
+            notes TEXT,
+            FOREIGN KEY (room_id) REFERENCES rooms (id),
+            FOREIGN KEY (staff_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Sale Items table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sale_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_id INTEGER,
+            menu_item_id INTEGER,
+            item_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            unit_price INTEGER NOT NULL,
+            total_price INTEGER NOT NULL,
+            FOREIGN KEY (sale_id) REFERENCES sales (id),
+            FOREIGN KEY (menu_item_id) REFERENCES menu_items (id)
+        )
+    ''')
+    
+    # Stock transactions
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS stock_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_item_id INTEGER,
+            transaction_type TEXT NOT NULL,  -- purchase, sale, adjustment, wastage
+            quantity INTEGER NOT NULL,
+            unit_price INTEGER,
+            total_amount INTEGER,
+            reference_id INTEGER,  -- sale_id or purchase_id
+            notes TEXT,
+            staff_id INTEGER,
+            transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (menu_item_id) REFERENCES menu_items (id),
+            FOREIGN KEY (staff_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Insert default admin user
+    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(
+            "INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)",
+            ('admin', '21232f297a57a5a743894a0e4a801fc3', 'အက်မင်', 'admin')  # password: admin
+        )
+    
+    # Insert default categories (13 categories from sale page)
+    categories = [
+        ('all', 'အားလုံး', 'fas fa-th', '#4CAF50'),
+        ('room', 'အခန်း', 'fas fa-door-closed', '#FF4081'),
+        ('beer', 'Beer', 'fas fa-beer', '#FF9800'),
+        ('juice', 'Juice', 'fas fa-glass-whiskey', '#4CAF50'),
+        ('wine', 'အရက်', 'fas fa-wine-glass-alt', '#F44336'),
+        ('chicken', 'ကြက်', 'fas fa-drumstick-bite', '#FF5722'),
+        ('prawn', 'ပုဇွန်', 'fas fa-fish', '#FFEB3B'),
+        ('pork', 'ဝက်', 'fas fa-bacon', '#795548'),
+        ('fish', 'ငါး', 'fas fa-fish', '#2196F3'),
+        ('seafood', 'Seafood', 'fas fa-crab', '#00BCD4'),
+        ('drink', 'အရည်သောက်', 'fas fa-wine-bottle', '#9C27B0'),
+        ('rice', 'ထမင်း', 'fas fa-utensils', '#FF9800'),
+        ('cocktail', 'Cocktail', 'fas fa-cocktail', '#E91E63')
+    ]
+    
+    cursor.execute("SELECT COUNT(*) FROM categories")
+    if cursor.fetchone()[0] == 0:
+        for i, (name, display_name, icon_class, color_code) in enumerate(categories):
+            cursor.execute(
+                "INSERT INTO categories (name, display_name, icon_class, color_code, sort_order) VALUES (?, ?, ?, ?, ?)",
+                (name, display_name, icon_class, color_code, i)
+            )
+    
+    # Insert sample menu items
+    cursor.execute("SELECT COUNT(*) FROM menu_items")
+    if cursor.fetchone()[0] == 0:
+        sample_items = [
+            ('VIP Room', 'room', 50000, 0, 10),
+            ('Standard Room', 'room', 30000, 0, 15),
+            ('Heineken Beer', 'beer', 5000, 3000, 50),
+            ('Tiger Beer', 'beer', 4500, 2800, 40),
+            ('Orange Juice', 'juice', 3000, 1500, 30),
+            ('Red Wine', 'wine', 25000, 18000, 15),
+            ('Fried Chicken', 'chicken', 12000, 8000, 20),
+            ('Grilled Prawn', 'prawn', 15000, 10000, 15),
+            ('Pork Curry', 'pork', 10000, 7000, 25),
+            ('Fried Fish', 'fish', 8000, 5000, 18),
+            ('Coca Cola', 'drink', 2000, 1200, 60),
+            ('Fried Rice', 'rice', 5000, 3000, 40),
+            ('Mojito Cocktail', 'cocktail', 8000, 5000, 20)
+        ]
+        
+        for name, category_name, sale_price, cost_price, stock in sample_items:
+            cursor.execute("SELECT id FROM categories WHERE name = ?", (category_name,))
+            category_id = cursor.fetchone()[0]
+            
+            cursor.execute(
+                """INSERT INTO menu_items 
+                (name, category_id, sale_price, cost_price, stock, min_stock, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (name, category_id, sale_price, cost_price, stock, 5, 'active')
+            )
+    
+    # Insert sample rooms
+    cursor.execute("SELECT COUNT(*) FROM rooms")
+    if cursor.fetchone()[0] == 0:
+        sample_rooms = [
+            ('R001', 'VIP 1', 'vip', 50000, 'available', 8),
+            ('R002', 'VIP 2', 'vip', 50000, 'available', 8),
+            ('R003', 'Standard 1', 'standard', 30000, 'available', 6),
+            ('R004', 'Standard 2', 'standard', 30000, 'available', 6),
+            ('R005', 'Family 1', 'family', 80000, 'available', 12)
+        ]
+        
+        for room_number, room_name, room_type, hourly_rate, status, capacity in sample_rooms:
+            cursor.execute(
+                "INSERT INTO rooms (room_number, room_name, room_type, hourly_rate, status, capacity) VALUES (?, ?, ?, ?, ?, ?)",
+                (room_number, room_name, room_type, hourly_rate, status, capacity)
+            )
+    
+    # Insert sample sales data
+    cursor.execute("SELECT COUNT(*) FROM sales")
+    if cursor.fetchone()[0] == 0:
+        # Get some menu items for sample sales
+        cursor.execute("SELECT id, name, sale_price FROM menu_items LIMIT 5")
+        menu_items = cursor.fetchall()
+        
+        # Get some rooms
+        cursor.execute("SELECT id, room_number FROM rooms LIMIT 3")
+        rooms = cursor.fetchall()
+        
+        # Get admin user
+        cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+        admin_id = cursor.fetchone()[0]
+        
+        # Create sample sales for the last 7 days
+        for i in range(10):
+            sale_date = (datetime.now() - timedelta(days=i % 7)).strftime('%Y-%m-%d')
+            sale_time = f"{18 + (i % 4)}:{(i * 10) % 60:02d}:00"
+            
+            cursor.execute(
+                """INSERT INTO sales 
+                (bill_number, room_id, customer_count, subtotal, tax_amount, service_charge, total_amount, staff_id, sale_date, sale_time) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    f'SW-202503{15+i:02d}-{i:03d}',
+                    rooms[i % len(rooms)][0] if rooms else None,
+                    (i % 4) + 2,
+                    50000 + (i * 10000),
+                    2500 + (i * 500),
+                    5000 + (i * 1000),
+                    57500 + (i * 11500),
+                    admin_id,
+                    sale_date,
+                    sale_time
+                )
+            )
+            
+            # Insert sale items
+            sale_id = cursor.lastrowid
+            for j in range(min(3, len(menu_items))):
+                item = menu_items[j]
+                cursor.execute(
+                    """INSERT INTO sale_items 
+                    (sale_id, menu_item_id, item_name, quantity, unit_price, total_price) 
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (sale_id, item[0], item[1], (i % 3) + 1, item[2], item[2] * ((i % 3) + 1))
+                )
+    
+    conn.commit()
+    conn.close()
+
+# User class for Flask-Login
+class User(UserMixin):
+    def __init__(self, user_dict):
+        self.id = user_dict['id']
+        self.username = user_dict['username']
+        self.full_name = user_dict['full_name']
+        self.role = user_dict['role']
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+    if user:
+        return User(dict(user))
+    return None
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# Custom Jinja2 filter for low stock calculation
+def low_stock_items_filter(items):
+    count = 0
+    for item in items:
+        min_stock = getattr(item, 'min_stock', 5)
+        if hasattr(item, 'stock') and item.stock > 0 and item.stock <= min_stock:
+            count += 1
+    return count
+
+app.jinja_env.filters['low_stock_items'] = low_stock_items_filter
+
+# Helper function to calculate order totals
+def calculate_order_totals(order_items, apply_tax=True, apply_service=True):
+    subtotal = sum(item['quantity'] * item['price'] for item in order_items)
+    
+    tax = 0
+    service_charge = 0
+    
+    if apply_tax:
+        tax = int(subtotal * 0.05)  # 5% tax
+    
+    if apply_service:
+        service_charge = int(subtotal * 0.10)  # 10% service charge
+    
+    total = subtotal + tax + service_charge
+    
+    return {
+        'subtotal': subtotal,
+        'tax': tax,
+        'service_charge': service_charge,
+        'total': total
+    }
+
+# ==================== ROUTES ====================
+
+@app.route('/')
+@login_required
+def index():
+    return redirect(url_for('dashboard'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # Simple MD5 hash check (in production use proper hashing)
+        import hashlib
+        password_hash = hashlib.md5(password.encode()).hexdigest()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = ? AND password_hash = ?", 
+                      (username, password_hash))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if user:
+            user_obj = User(dict(user))
+            login_user(user_obj)
+            flash('လော့ဂ်အင် အောင်မြင်ပါသည်။', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('အသုံးပြုသူအမည် သို့မဟုတ် စကားဝှက် မှားယွင်းနေပါသည်။', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('လော့ဂ်အောက် အောင်မြင်ပါသည်။', 'success')
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get today's sales
+    cursor.execute("""
+        SELECT COALESCE(SUM(total_amount), 0) as total_sales 
+        FROM sales 
+        WHERE DATE(sale_date) = DATE('now')
+    """)
+    today_sales = cursor.fetchone()[0]
+    
+    # Get total rooms
+    cursor.execute("SELECT COUNT(*) FROM rooms")
+    total_rooms = cursor.fetchone()[0]
+    
+    # Get occupied rooms
+    cursor.execute("SELECT COUNT(*) FROM rooms WHERE status = 'occupied'")
+    occupied_rooms = cursor.fetchone()[0]
+    
+    # Get low stock items
+    cursor.execute("""
+        SELECT COUNT(*) 
+        FROM menu_items 
+        WHERE stock <= min_stock AND status = 'active'
+    """)
+    low_stock_items = cursor.fetchone()[0]
+    
+    # Get recent sales
+    cursor.execute("""
+        SELECT s.*, r.room_name, u.full_name as staff_name
+        FROM sales s
+        LEFT JOIN rooms r ON s.room_id = r.id
+        LEFT JOIN users u ON s.staff_id = u.id
+        ORDER BY s.sale_date DESC, s.sale_time DESC
+        LIMIT 10
+    """)
+    recent_sales = cursor.fetchall()
+    
+    conn.close()
+    
+    return render_template('dashboard.html',
+                         today_sales=today_sales,
+                         total_rooms=total_rooms,
+                         occupied_rooms=occupied_rooms,
+                         low_stock_items=low_stock_items,
+                         recent_sales=recent_sales)
+
+@app.route('/rooms')
+@login_required
+def rooms():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM rooms ORDER BY room_number")
+    rooms = cursor.fetchall()
+    
+    # Get pending orders count for each room
+    room_orders = {}
+    for room in rooms:
+        cursor.execute("SELECT COUNT(*) FROM room_orders WHERE room_id = ? AND status = 'pending'", (room['id'],))
+        pending_orders = cursor.fetchone()[0]
+        room_orders[room['id']] = pending_orders
+    
+    # Get categories for sale page reference
+    cursor.execute("SELECT * FROM categories ORDER BY sort_order")
+    categories = cursor.fetchall()
+    
+    conn.close()
+    
+    return render_template('rooms.html', rooms=rooms, categories=categories, room_orders=room_orders)
+
+@app.route('/room/<int:room_id>/select')
+@login_required
+def select_room(room_id):
+    # Store selected room in session
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM rooms WHERE id = ?", (room_id,))
+    room = cursor.fetchone()
+    conn.close()
+    
+    if room:
+        # Redirect to sale page with room parameter
+        return redirect(url_for('sale', room_id=room_id))
+    else:
+        flash('အခန်းမရှိပါ။', 'error')
+        return redirect(url_for('rooms'))
+
+@app.route('/menu')
+@login_required
+def menu():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT mi.*, c.name as category_name, c.display_name as category_display
+        FROM menu_items mi
+        LEFT JOIN categories c ON mi.category_id = c.id
+        ORDER BY c.sort_order, mi.name
+    """)
+    items = cursor.fetchall()
+    
+    cursor.execute("SELECT * FROM categories ORDER BY sort_order")
+    categories = cursor.fetchall()
+    
+    conn.close()
+    
+    return render_template('menu.html', items=items, categories=categories)
+
+@app.route('/sale')
+@login_required
+def sale():
+    room_id = request.args.get('room_id', type=int)
+    selected_room = None
+    room_order = None
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get selected room details
+    if room_id:
+        cursor.execute("SELECT * FROM rooms WHERE id = ?", (room_id,))
+        selected_room = cursor.fetchone()
+        
+        # Get pending order for this room
+        cursor.execute("""
+            SELECT * FROM room_orders 
+            WHERE room_id = ? AND status = 'pending' 
+            ORDER BY created_at DESC LIMIT 1
+        """, (room_id,))
+        
+        order_row = cursor.fetchone()
+        if order_row:
+            room_order = {
+                'id': order_row['id'],
+                'order_data': json.loads(order_row['order_data']),
+                'subtotal': order_row['subtotal'],
+                'tax': order_row['tax'],
+                'service_charge': order_row['service_charge'],
+                'total_amount': order_row['total_amount']
+            }
+    
+    cursor.execute("SELECT * FROM categories ORDER BY sort_order")
+    categories = cursor.fetchall()
+    
+    cursor.execute("SELECT * FROM rooms WHERE status = 'available' OR id = ? ORDER BY room_number", (room_id,) if room_id else (None,))
+    available_rooms = cursor.fetchall()
+    
+    # Get all active menu items with category info
+    cursor.execute("""
+        SELECT mi.*, c.name as category_name, c.display_name as category_display
+        FROM menu_items mi
+        LEFT JOIN categories c ON mi.category_id = c.id
+        WHERE mi.status = 'active'
+        ORDER BY c.sort_order, mi.name
+    """)
+    menu_items = cursor.fetchall()
+    
+    conn.close()
+    
+    return render_template('sale.html',
+                         categories=categories,
+                         available_rooms=available_rooms,
+                         menu_items=menu_items,
+                         selected_room=selected_room,
+                         room_order=room_order,
+                         room_id=room_id)
+
+@app.route('/reports')
+@login_required
+def reports():
+    return render_template('reports.html')
+
+@app.route('/stocks')
+@login_required
+def stocks():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT mi.*, c.display_name as category_display
+        FROM menu_items mi
+        LEFT JOIN categories c ON mi.category_id = c.id
+        ORDER BY c.sort_order, mi.name
+    """)
+    items = cursor.fetchall()
+    
+    conn.close()
+    
+    return render_template('stocks.html', items=items)
+
+@app.route('/settings')
+@login_required
+def settings():
+    return render_template('settings.html')
+
+# ==================== API ROUTES ====================
+
+# ==================== ROOM ORDER APIs ====================
+
+@app.route('/api/save_room_order', methods=['POST'])
+@login_required
+def save_room_order():
+    data = request.json
+    room_id = data.get('room_id')
+    order_items = data.get('order_items', [])
+    apply_tax = data.get('apply_tax', True)
+    apply_service = data.get('apply_service', True)
+    
+    # Calculate totals
+    totals = calculate_order_totals(order_items, apply_tax, apply_service)
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if there's existing pending order
+        cursor.execute("""
+            SELECT id FROM room_orders 
+            WHERE room_id = ? AND status = 'pending' 
+            ORDER BY created_at DESC LIMIT 1
+        """, (room_id,))
+        
+        existing_order = cursor.fetchone()
+        
+        if existing_order:
+            # Update existing order
+            order_id = existing_order['id']
+            cursor.execute("""
+                UPDATE room_orders SET 
+                    order_data = ?,
+                    subtotal = ?,
+                    tax = ?,
+                    service_charge = ?,
+                    total_amount = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (
+                json.dumps(order_items),
+                totals['subtotal'],
+                totals['tax'],
+                totals['service_charge'],
+                totals['total'],
+                order_id
+            ))
+            
+            # Update room status to occupied
+            cursor.execute("UPDATE rooms SET status = 'occupied' WHERE id = ?", (room_id,))
+        else:
+            # Create new order
+            cursor.execute("""
+                INSERT INTO room_orders 
+                (room_id, order_data, subtotal, tax, service_charge, total_amount, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                room_id,
+                json.dumps(order_items),
+                totals['subtotal'],
+                totals['tax'],
+                totals['service_charge'],
+                totals['total'],
+                'pending'
+            ))
+            
+            order_id = cursor.lastrowid
+            
+            # Update room status to occupied
+            cursor.execute("UPDATE rooms SET status = 'occupied' WHERE id = ?", (room_id,))
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'order_id': order_id,
+            'message': 'Order saved successfully',
+            'totals': totals
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+@app.route('/api/get_room_order/<int:room_id>')
+@login_required
+def get_room_order(room_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT * FROM room_orders 
+        WHERE room_id = ? AND status = 'pending' 
+        ORDER BY created_at DESC LIMIT 1
+    """, (room_id,))
+    
+    order_row = cursor.fetchone()
+    conn.close()
+    
+    if order_row:
+        order_data = {
+            'id': order_row['id'],
+            'order_data': json.loads(order_row['order_data']),
+            'subtotal': order_row['subtotal'],
+            'tax': order_row['tax'],
+            'service_charge': order_row['service_charge'],
+            'total_amount': order_row['total_amount'],
+            'created_at': order_row['created_at']
+        }
+        return jsonify({'success': True, 'order': order_data})
+    
+    return jsonify({'success': True, 'order': None})
+
+@app.route('/api/clear_room_order/<int:room_id>', methods=['POST'])
+@login_required
+def clear_room_order(room_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Delete pending order for this room
+        cursor.execute("DELETE FROM room_orders WHERE room_id = ? AND status = 'pending'", (room_id,))
+        
+        # Update room status back to available if no other orders
+        cursor.execute("""
+            SELECT COUNT(*) FROM room_orders 
+            WHERE room_id = ? AND status = 'pending'
+        """, (room_id,))
+        
+        pending_count = cursor.fetchone()[0]
+        if pending_count == 0:
+            cursor.execute("UPDATE rooms SET status = 'available' WHERE id = ?", (room_id,))
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Order cleared successfully'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+# ==================== SALE CHECKOUT APIs ====================
+
+@app.route('/api/checkout_sale', methods=['POST'])
+@login_required
+def checkout_sale():
+    data = request.json
+    room_id = data.get('room_id')
+    order_items = data.get('order_items', [])
+    apply_tax = data.get('apply_tax', True)
+    apply_service = data.get('apply_service', True)
+    
+    # Calculate totals
+    totals = calculate_order_totals(order_items, apply_tax, apply_service)
+    
+    # Generate bill number
+    bill_number = f"SW-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Create sale record
+        cursor.execute("""
+            INSERT INTO sales 
+            (bill_number, room_id, customer_count, subtotal, tax_amount, service_charge, total_amount, staff_id, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            bill_number,
+            room_id,
+            data.get('customer_count', 1),
+            totals['subtotal'],
+            totals['tax'],
+            totals['service_charge'],
+            totals['total'],
+            current_user.id,
+            data.get('notes', '')
+        ))
+        
+        sale_id = cursor.lastrowid
+        
+        # Insert sale items and update stock
+        for item in order_items:
+            cursor.execute("""
+                INSERT INTO sale_items 
+                (sale_id, menu_item_id, item_name, quantity, unit_price, total_price)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                sale_id,
+                item.get('id'),
+                item.get('name'),
+                item.get('quantity', 1),
+                item.get('price', 0),
+                item.get('quantity', 1) * item.get('price', 0)
+            ))
+            
+            # Update stock
+            cursor.execute("""
+                UPDATE menu_items 
+                SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (item.get('quantity', 1), item.get('id')))
+            
+            # Record stock transaction
+            cursor.execute("""
+                INSERT INTO stock_transactions 
+                (menu_item_id, transaction_type, quantity, unit_price, total_amount, reference_id, staff_id, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item.get('id'),
+                'sale',
+                item.get('quantity', 1),
+                item.get('price', 0),
+                item.get('quantity', 1) * item.get('price', 0),
+                sale_id,
+                current_user.id,
+                f'Sale #{bill_number}'
+            ))
+        
+        # Clear room order
+        cursor.execute("DELETE FROM room_orders WHERE room_id = ? AND status = 'pending'", (room_id,))
+        
+        # Update room status to available
+        cursor.execute("UPDATE rooms SET status = 'available' WHERE id = ?", (room_id,))
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'bill_number': bill_number,
+            'sale_id': sale_id,
+            'totals': totals,
+            'message': 'Checkout successful and order cleared'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+# ==================== MENU APIs ====================
+
+@app.route('/api/menu_items')
+@login_required
+def api_menu_items():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT mi.*, c.name as category_name, c.display_name as category_display
+        FROM menu_items mi
+        LEFT JOIN categories c ON mi.category_id = c.id
+        WHERE mi.status = 'active'
+        ORDER BY c.sort_order, mi.name
+    """)
+    
+    items = []
+    for row in cursor.fetchall():
+        item = dict(row)
+        if item['image_path']:
+            item['image_url'] = url_for('static', filename=item['image_path'])
+        else:
+            item['image_url'] = None
+        items.append(item)
+    
+    conn.close()
+    return jsonify({'success': True, 'items': items})
+
+@app.route('/api/menu_item/<int:item_id>')
+@login_required
+def api_menu_item(item_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT mi.*, c.name as category_name, c.display_name as category_display
+        FROM menu_items mi
+        LEFT JOIN categories c ON mi.category_id = c.id
+        WHERE mi.id = ?
+    """, (item_id,))
+    
+    item = cursor.fetchone()
+    conn.close()
+    
+    if item:
+        item_dict = dict(item)
+        if item_dict['image_path']:
+            item_dict['image_url'] = url_for('static', filename=item_dict['image_path'])
+        else:
+            item_dict['image_url'] = None
+        return jsonify({'success': True, 'item': item_dict})
+    return jsonify({'success': False, 'error': 'Item not found'})
+
+@app.route('/api/add_menu_item', methods=['POST'])
+@login_required
+def add_menu_item():
+    data = request.json
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            INSERT INTO menu_items 
+            (name, category_id, sale_price, cost_price, stock, min_stock, unit, description, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data.get('name'),
+            data.get('category_id'),
+            data.get('sale_price', 0),
+            data.get('cost_price', 0),
+            data.get('stock', 0),
+            data.get('min_stock', 5),
+            data.get('unit', 'ခု'),
+            data.get('description', ''),
+            data.get('status', 'active')
+        ))
+        
+        item_id = cursor.lastrowid
+        
+        # Record stock transaction
+        if data.get('stock', 0) > 0:
+            cursor.execute("""
+                INSERT INTO stock_transactions 
+                (menu_item_id, transaction_type, quantity, unit_price, total_amount, staff_id, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item_id,
+                'purchase',
+                data.get('stock', 0),
+                data.get('cost_price', 0),
+                data.get('stock', 0) * data.get('cost_price', 0),
+                current_user.id,
+                'Initial stock'
+            ))
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'item_id': item_id,
+            'message': 'Menu item added successfully'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+@app.route('/api/update_menu_item', methods=['PUT'])
+@login_required
+def update_menu_item():
+    data = request.json
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            UPDATE menu_items SET 
+                name = ?,
+                category_id = ?,
+                sale_price = ?,
+                cost_price = ?,
+                stock = ?,
+                min_stock = ?,
+                unit = ?,
+                description = ?,
+                status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (
+            data.get('name'),
+            data.get('category_id'),
+            data.get('sale_price', 0),
+            data.get('cost_price', 0),
+            data.get('stock', 0),
+            data.get('min_stock', 5),
+            data.get('unit', 'ခု'),
+            data.get('description', ''),
+            data.get('status', 'active'),
+            data.get('item_id')
+        ))
+        
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Menu item updated successfully'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+@app.route('/api/delete_item/<int:item_id>', methods=['DELETE'])
+@login_required
+def delete_item(item_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        # First check if item is used in any pending orders
+        cursor.execute("""
+            SELECT COUNT(*) FROM room_orders ro 
+            WHERE json_extract(ro.order_data, '$[*].id') LIKE ?
+            AND ro.status = 'pending'
+        """, (f'%{item_id}%',))
+        
+        pending_count = cursor.fetchone()[0]
+        
+        if pending_count > 0:
+            return jsonify({
+                'success': False, 
+                'error': 'This item is currently in pending orders. Cannot delete.'
+            })
+        
+        cursor.execute("DELETE FROM menu_items WHERE id = ?", (item_id,))
+        conn.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Item deleted successfully'
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+# ==================== ROOMS APIs ====================
+
+@app.route('/api/rooms')
+@login_required
+def api_rooms():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM rooms ORDER BY room_number")
+    rooms = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({'rooms': rooms})
+
+@app.route('/api/room/<int:room_id>')
+@login_required
+def api_room(room_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM rooms WHERE id = ?", (room_id,))
+    room = cursor.fetchone()
+    conn.close()
+    
+    if room:
+        return jsonify({'success': True, 'room': dict(room)})
+    return jsonify({'success': False, 'error': 'Room not found'})
+
+@app.route('/api/update_room_status', methods=['POST'])
+@login_required
+def update_room_status():
+    data = request.json
+    room_id = data.get('room_id')
+    status = data.get('status')
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("UPDATE rooms SET status = ? WHERE id = ?", (status, room_id))
+        conn.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        conn.close()
+
+# ==================== PRINT BILL ====================
+
+@app.route('/api/print_bill/<int:sale_id>')
+@login_required
+def print_bill(sale_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get sale details
+    cursor.execute("""
+        SELECT s.*, r.room_name, u.full_name as staff_name
+        FROM sales s
+        LEFT JOIN rooms r ON s.room_id = r.id
+        LEFT JOIN users u ON s.staff_id = u.id
+        WHERE s.id = ?
+    """, (sale_id,))
+    
+    sale = cursor.fetchone()
+    
+    if not sale:
+        return jsonify({'success': False, 'error': 'Sale not found'})
+    
+    # Get sale items
+    cursor.execute("""
+        SELECT si.*, mi.category_id
+        FROM sale_items si
+        LEFT JOIN menu_items mi ON si.menu_item_id = mi.id
+        WHERE si.sale_id = ?
+    """, (sale_id,))
+    
+    items = cursor.fetchall()
+    
+    conn.close()
+    
+    # Prepare bill data
+    bill_data = {
+        'bill_number': sale['bill_number'],
+        'room_name': sale['room_name'] or 'N/A',
+        'staff_name': sale['staff_name'],
+        'sale_date': sale['sale_date'],
+        'sale_time': sale['sale_time'],
+        'customer_count': sale['customer_count'],
+        'subtotal': sale['subtotal'],
+        'tax_amount': sale['tax_amount'],
+        'service_charge': sale['service_charge'],
+        'total_amount': sale['total_amount'],
+        'payment_method': sale['payment_method'],
+        'items': [dict(item) for item in items]
+    }
+    
+    return jsonify({'success': True, 'bill': bill_data})
+
+# ==================== DASHBOARD APIs ====================
+
+@app.route('/api/dashboard_stats')
+@login_required
+def api_dashboard_stats():
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Get today's sales
+    cursor.execute("""
+        SELECT COALESCE(SUM(total_amount), 0) as total_sales 
+        FROM sales 
+        WHERE DATE(sale_date) = DATE('now')
+    """)
+    today_sales = cursor.fetchone()[0]
+    
+    # Get total rooms
+    cursor.execute("SELECT COUNT(*) FROM rooms")
+    total_rooms = cursor.fetchone()[0]
+    
+    # Get occupied rooms
+    cursor.execute("SELECT COUNT(*) FROM rooms WHERE status = 'occupied'")
+    occupied_rooms = cursor.fetchone()[0]
+    
+    # Get low stock items
+    cursor.execute("""
+        SELECT COUNT(*) 
+        FROM menu_items 
+        WHERE stock <= min_stock AND status = 'active'
+    """)
+    low_stock_items = cursor.fetchone()[0]
+    
+    # Get today's customers
+    cursor.execute("""
+        SELECT COALESCE(SUM(customer_count), 0) as total_customers
+        FROM sales 
+        WHERE DATE(sale_date) = DATE('now')
+    """)
+    today_customers = cursor.fetchone()[0] or 0
+    
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'today_sales': today_sales,
+        'total_rooms': total_rooms,
+        'occupied_rooms': occupied_rooms,
+        'low_stock_items': low_stock_items,
+        'today_customers': today_customers
+    })
+
+# ==================== MAIN ====================
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True, host='0.0.0.0', port=5000)

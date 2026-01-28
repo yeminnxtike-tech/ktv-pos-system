@@ -1,0 +1,1151 @@
+// Sale Page JavaScript - Complete Implementation for KTV POS System
+// Updated to work with new sale.html structure
+
+console.log('sale.js loaded');
+
+// ===========================
+// Global Variables
+// ===========================
+let orderItems = [];
+let currentCategory = 'all';
+let currentRoom = 'မရွေးရသေးပါ';
+let menuItems = [];
+
+// ===========================
+// Initialization
+// ===========================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded - initializing sale page...');
+    
+    // Setup all event listeners
+    setupEventListeners();
+    
+    // Update date/time
+    updateDateTime();
+    
+    // Update user info
+    updateUserInfo();
+    
+    // Check for active room from localStorage
+    checkForActiveRoom();
+    
+    // Load menu items from API
+    loadMenuItems();
+    
+    // Update date/time every minute
+    setInterval(updateDateTime, 60000);
+    
+    console.log('Sale page initialization complete');
+});
+
+// ===========================
+// Setup Event Listeners
+// ===========================
+function setupEventListeners() {
+    console.log('Setting up event listeners...');
+    
+    // Category selection
+    document.querySelectorAll('.category-item').forEach(item => {
+        item.addEventListener('click', function() {
+            console.log('Category clicked:', this.dataset.category);
+            document.querySelectorAll('.category-item').forEach(i => {
+                i.classList.remove('active');
+            });
+            this.classList.add('active');
+            
+            currentCategory = this.dataset.category;
+            filterMenuItems();
+        });
+    });
+    
+    // Search functionality
+    const searchBtn = document.getElementById('search-btn');
+    const searchInput = document.getElementById('menu-search');
+    
+    if (searchBtn) {
+        searchBtn.addEventListener('click', function() {
+            console.log('Search button clicked');
+            filterMenuItems();
+        });
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                console.log('Enter pressed for search');
+                filterMenuItems();
+            }
+        });
+    }
+    
+    // Action buttons
+    const clearOrderBtn = document.getElementById('clear-order');
+    if (clearOrderBtn) clearOrderBtn.addEventListener('click', clearOrder);
+    
+    const saveOrderBtn1 = document.getElementById('save-order-btn');
+    if (saveOrderBtn1) saveOrderBtn1.addEventListener('click', saveOrder);
+    
+    const saveOrderBtn2 = document.getElementById('save-order');
+    if (saveOrderBtn2) saveOrderBtn2.addEventListener('click', saveOrder);
+    
+    const checkoutBtn1 = document.getElementById('checkout-btn');
+    if (checkoutBtn1) checkoutBtn1.addEventListener('click', processCheckout);
+    
+    const checkoutBtn2 = document.getElementById('final-checkout-btn');
+    if (checkoutBtn2) checkoutBtn2.addEventListener('click', processCheckout);
+    
+    const printBillBtn = document.getElementById('print-bill');
+    if (printBillBtn) printBillBtn.addEventListener('click', printBill);
+    
+    const goRoomsBtn = document.getElementById('go-rooms');
+    if (goRoomsBtn) goRoomsBtn.addEventListener('click', goToRooms);
+    
+    const refreshMenuBtn = document.getElementById('refresh-menu');
+    if (refreshMenuBtn) refreshMenuBtn.addEventListener('click', refreshMenu);
+    
+    // Checkboxes
+    const taxCheckbox = document.getElementById('tax-checkbox');
+    const serviceCheckbox = document.getElementById('service-checkbox');
+    
+    if (taxCheckbox) taxCheckbox.addEventListener('change', updatePaymentSummary);
+    if (serviceCheckbox) serviceCheckbox.addEventListener('change', updatePaymentSummary);
+    
+    // Sidebar toggle
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', function() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('active');
+        });
+    }
+    
+    console.log('Event listeners setup complete');
+}
+
+// ===========================
+// Date and Time Functions
+// ===========================
+function updateDateTime() {
+    const now = new Date();
+    
+    // Format date (dd-mm-yyyy)
+    const day = now.getDate().toString().padStart(2, '0');
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const year = now.getFullYear();
+    const dateStr = `${day}-${month}-${year}`;
+    
+    // Format time (hh:mm)
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
+    
+    // Update all date elements
+    document.querySelectorAll('[id^="current-date"]').forEach(el => {
+        el.textContent = dateStr;
+    });
+    
+    // Update all time elements
+    document.querySelectorAll('[id^="current-time"]').forEach(el => {
+        el.textContent = timeStr;
+    });
+}
+
+// ===========================
+// User Information
+// ===========================
+function updateUserInfo() {
+    console.log('Updating user information...');
+    
+    // Try to get user info from API
+    fetch('/api/user_info', { 
+        credentials: 'include',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+        .then(response => {
+            console.log('User info response status:', response.status);
+            if (response.status === 401) {
+                console.log('Unauthorized - redirecting to login');
+                window.location.href = '/login?next=/sale';
+                return null;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.success && data.user) {
+                console.log('User info loaded:', data.user);
+                document.getElementById('staff-name').textContent = data.user.full_name;
+                document.getElementById('sidebar-user-name').textContent = data.user.full_name;
+            } else {
+                console.log('Using default user info');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading user info:', error);
+        });
+}
+
+// ===========================
+// Room Functions
+// ===========================
+function checkForActiveRoom() {
+    const activeRoom = localStorage.getItem('ktv_active_room');
+    if (activeRoom) {
+        try {
+            const roomData = JSON.parse(activeRoom);
+            currentRoom = roomData.name || roomData;
+            updateRoomDisplay();
+            
+            // Check for saved order for this room
+            checkForSavedOrder(roomData.id || roomData);
+        } catch (error) {
+            currentRoom = activeRoom;
+            updateRoomDisplay();
+        }
+    }
+}
+
+function updateRoomDisplay() {
+    const roomElement = document.getElementById('current-room');
+    if (roomElement) {
+        roomElement.textContent = currentRoom;
+        roomElement.style.color = currentRoom === 'မရွေးရသေးပါ' ? '#ff5252' : '#4CAF50';
+    }
+}
+
+function checkForSavedOrder(roomId) {
+    const roomOrders = JSON.parse(localStorage.getItem('ktv_room_orders') || '{}');
+    if (roomOrders[roomId]) {
+        const savedOrder = roomOrders[roomId];
+        const lastSaved = new Date(savedOrder.saved_at);
+        const now = new Date();
+        const hoursDiff = (now - lastSaved) / (1000 * 60 * 60);
+        
+        if (hoursDiff < 24) {
+            const loadOrder = confirm(
+                `${currentRoom} အခန်းအတွက် သိမ်းဆည်းထားသော Order ရှိပါသည်။\n` +
+                `သိမ်းဆည်းချိန်: ${lastSaved.toLocaleTimeString()}\n\n` +
+                `ယခု Order ထဲသို့ ပြန်လည်ထည့်သွင်းမည်လား?\n\n` +
+                'OK - Order ကို ပြန်လည်ထည့်သွင်းမည်\n' +
+                'Cancel - Order အသစ်စတင်မည်'
+            );
+            
+            if (loadOrder) {
+                orderItems = savedOrder.items || [];
+                updateOrderDisplay();
+                updatePaymentSummary();
+                showToast('သိမ်းဆည်းထားသော Order ကို ပြန်လည်ထည့်သွင်းပြီးပါပြီ', 'info');
+            }
+        }
+    }
+}
+
+function goToRooms() {
+    // Save current order as temporary
+    if (orderItems.length > 0) {
+        localStorage.setItem('ktv_temp_order', JSON.stringify(orderItems));
+        showToast('Order ကို ယာယီသိမ်းဆည်းထားပါပြီ', 'info');
+    }
+    
+    window.location.href = '/rooms';
+}
+
+// ===========================
+// Menu Functions
+// ===========================
+async function loadMenuItems() {
+    try {
+        console.log('Loading menu items from API...');
+        const menuGrid = document.getElementById('menu-items-grid');
+        
+        if (!menuGrid) {
+            console.error('menu-items-grid element not found!');
+            return;
+        }
+        
+        // Show loading state
+        menuGrid.innerHTML = `
+            <div class="loading-message">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Menu items တင်နေပါသည်...</p>
+            </div>
+        `;
+        
+        // IMPORTANT: Add credentials to include cookies
+        const response = await fetch('/api/menu_items', {
+            credentials: 'include',  // This sends cookies with the request
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        console.log('API response status:', response.status);
+        
+        if (response.status === 401 || response.status === 302) {
+            console.error('Authentication error - redirecting to login');
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            return;
+        }
+        
+        const data = await response.json();
+        console.log('API response data:', data);
+        
+        if (data.success && data.items) {
+            menuItems = data.items;
+            console.log('Loaded', menuItems.length, 'menu items from API');
+            filterMenuItems();
+        } else {
+            console.error('API returned error:', data);
+            loadSampleMenuData();
+        }
+        
+    } catch (error) {
+        console.error('Error loading menu items:', error);
+        loadSampleMenuData();
+    }
+}
+
+function loadSampleMenuData() {
+    console.log('Loading sample menu data...');
+    menuItems = [
+        { id: 1, name: 'Heineken Beer', category: 'beer', sale_price: 5000, stock: 50, min_stock: 10, status: 'active' },
+        { id: 2, name: 'Tiger Beer', category: 'beer', sale_price: 4500, stock: 40, min_stock: 10, status: 'active' },
+        { id: 3, name: 'Orange Juice', category: 'juice', sale_price: 3000, stock: 30, min_stock: 5, status: 'active' },
+        { id: 4, name: 'Fried Chicken', category: 'chicken', sale_price: 12000, stock: 20, min_stock: 5, status: 'active' },
+        { id: 5, name: 'Fried Prawn', category: 'prawn', sale_price: 15000, stock: 15, min_stock: 5, status: 'active' },
+        { id: 6, name: 'Pork Curry', category: 'pork', sale_price: 10000, stock: 25, min_stock: 5, status: 'active' },
+        { id: 7, name: 'Fried Fish', category: 'fish', sale_price: 8000, stock: 18, min_stock: 5, status: 'active' },
+        { id: 8, name: 'Mixed Vegetables', category: 'vegetable', sale_price: 6000, stock: 35, min_stock: 5, status: 'active' },
+        { id: 9, name: 'Coca Cola', category: 'drink', sale_price: 2000, stock: 60, min_stock: 10, status: 'active' },
+        { id: 10, name: 'Fried Rice', category: 'rice', sale_price: 5000, stock: 40, min_stock: 10, status: 'active' },
+        { id: 11, name: 'Mojito Cocktail', category: 'cocktail', sale_price: 8000, stock: 20, min_stock: 5, status: 'active' },
+        { id: 12, name: 'Red Wine', category: 'wine', sale_price: 25000, stock: 15, min_stock: 5, status: 'active' }
+    ];
+    
+    localStorage.setItem('ktv_menu_items', JSON.stringify(menuItems));
+    filterMenuItems();
+}
+
+function filterMenuItems() {
+    const menuGrid = document.getElementById('menu-items-grid');
+    if (!menuGrid) {
+        console.error('menu-items-grid element not found during filter!');
+        return;
+    }
+    
+    console.log('Filtering menu items. Category:', currentCategory);
+    
+    // Get search term
+    const searchInput = document.getElementById('menu-search');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    
+    // Filter active items
+    let filteredItems = menuItems.filter(item => item.status === 'active');
+    
+    // Filter by category
+    if (currentCategory !== 'all') {
+        filteredItems = filteredItems.filter(item => item.category === currentCategory);
+    }
+    
+    // Filter by search term
+    if (searchTerm) {
+        filteredItems = filteredItems.filter(item => 
+            item.name.toLowerCase().includes(searchTerm) || 
+            (item.description && item.description.toLowerCase().includes(searchTerm))
+        );
+    }
+    
+    console.log('Filtered items count:', filteredItems.length);
+    
+    if (filteredItems.length === 0) {
+        menuGrid.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-box-open fa-lg"></i>
+                <p>ဤ Category တွင် Menu မရှိပါ</p>
+                <p style="font-size: 11px; margin-top: 5px;">Menu ထဲတွင် ပစ္စည်းများ ထည့်သွင်းပါ</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    filteredItems.forEach(item => {
+        const stockStatus = getStockStatus(item);
+        const stockClass = getStockClass(item);
+        
+        html += `
+            <div class="menu-item ${stockClass}" 
+                 onclick="addToOrder(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${item.sale_price}, ${item.stock})">
+                ${item.stock > 0 ? 
+                    `<div class="item-stock">${item.stock}</div>` : 
+                    '<div class="item-stock out">ကုန်</div>'}
+                <div class="item-name">${item.name}</div>
+                <div class="item-price">${item.sale_price.toLocaleString()} Ks</div>
+                ${stockStatus !== 'OK' ? `<div class="item-status">${stockStatus}</div>` : ''}
+            </div>
+        `;
+    });
+    
+    menuGrid.innerHTML = html;
+    console.log('Menu items rendered');
+}
+
+function getStockStatus(item) {
+    if (item.stock <= 0) return 'ကုန်';
+    if (item.stock <= item.min_stock) return 'နည်း';
+    return 'OK';
+}
+
+function getStockClass(item) {
+    if (item.stock <= 0) return 'out-of-stock';
+    if (item.stock <= item.min_stock) return 'low-stock';
+    return '';
+}
+
+function refreshMenu() {
+    loadMenuItems();
+    showToast('Menu ကို ပြန်လည်စစ်ဆေးပြီးပါပြီ', 'info');
+}
+
+// ===========================
+// Order Functions
+// ===========================
+function addToOrder(itemId, itemName, itemPrice, itemStock) {
+    console.log('Adding to order:', { itemId, itemName, itemPrice, itemStock });
+    
+    // Check if room is selected
+    if (currentRoom === 'မရွေးရသေးပါ') {
+        showToast('ကျေးဇူးပြု၍ အခန်းရွေးချယ်ပါ', 'error');
+        return false;
+    }
+    
+    // Find menu item for current stock check
+    const menuItem = menuItems.find(item => item.id === itemId);
+    if (!menuItem || menuItem.stock <= 0) {
+        showToast('ဤပစ္စည်း လက်ကျန်ကုန်နေပါသည်', 'error');
+        return false;
+    }
+    
+    // Check if item already in order
+    const existingIndex = orderItems.findIndex(item => item.id === itemId);
+    
+    if (existingIndex !== -1) {
+        // Check stock before increasing quantity
+        const newQuantity = orderItems[existingIndex].quantity + 1;
+        if (newQuantity > menuItem.stock) {
+            showToast(`${itemName} လက်ကျန်မလုံလောက်ပါ (လက်ကျန်: ${menuItem.stock})`, 'error');
+            return false;
+        }
+        
+        orderItems[existingIndex].quantity = newQuantity;
+        orderItems[existingIndex].total = newQuantity * itemPrice;
+    } else {
+        // Check stock before adding new item
+        if (menuItem.stock < 1) {
+            showToast(`${itemName} လက်ကျန်ကုန်နေပါသည်`, 'error');
+            return false;
+        }
+        
+        orderItems.push({
+            id: itemId,
+            name: itemName,
+            price: itemPrice,
+            quantity: 1,
+            total: itemPrice,
+            stock: menuItem.stock
+        });
+    }
+    
+    updateOrderDisplay();
+    showToast(`${itemName} ကို order ထည့်ပြီးပါပြီ`);
+    return true;
+}
+
+function updateOrderDisplay() {
+    console.log('Updating order display. Items count:', orderItems.length);
+    const orderBody = document.getElementById('order-items-body');
+    if (!orderBody) {
+        console.error('order-items-body element not found!');
+        return;
+    }
+    
+    if (orderItems.length === 0) {
+        orderBody.innerHTML = `
+            <tr class="empty-order">
+                <td colspan="6" style="text-align: center; padding: 30px; color: rgba(255, 255, 255, 0.7);">
+                    <i class="fas fa-shopping-cart fa-lg"></i>
+                    <p style="margin-top: 10px; font-size: 12px;">အခုလောလောဆယ် Order မရှိပါ</p>
+                    <p style="font-size: 11px; margin-top: 5px;">Menu များကို နှိပ်၍ Order ထည့်ပါ</p>
+                </td>
+            </tr>
+        `;
+        updatePaymentSummary();
+        return;
+    }
+    
+    let html = '';
+    orderItems.forEach((item, index) => {
+        // Check current stock
+        const menuItem = menuItems.find(m => m.id === item.id);
+        const currentStock = menuItem ? menuItem.stock : 0;
+        const exceedsStock = item.quantity > currentStock;
+        
+        html += `
+            <tr data-item-id="${item.id}" class="${exceedsStock ? 'stock-warning' : ''}">
+                <td>${index + 1}</td>
+                <td class="item-name" title="${item.name}">
+                    ${item.name}
+                    ${exceedsStock ? '<br><small style="color: #ff5252;">(လက်ကျန်မလုံလောက်)</small>' : ''}
+                </td>
+                <td>${item.price.toLocaleString()}</td>
+                <td>
+                    <div class="quantity-control">
+                        <button class="qty-btn decrease" onclick="updateQuantity(${item.id}, -1)" title="နည်းမည်">-</button>
+                        <input type="text" class="qty-input" value="${item.quantity}" readonly>
+                        <button class="qty-btn increase" onclick="updateQuantity(${item.id}, 1)" 
+                                ${exceedsStock ? 'disabled style="opacity: 0.5;"' : ''} 
+                                title="များမည်">+</button>
+                    </div>
+                </td>
+                <td>${item.total.toLocaleString()}</td>
+                <td>
+                    <button class="remove-btn" onclick="removeFromOrder(${item.id})" title="ဖယ်ရှားမည်">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    orderBody.innerHTML = html;
+    updatePaymentSummary();
+}
+
+function updateQuantity(itemId, change) {
+    console.log('Updating quantity for item:', itemId, 'change:', change);
+    
+    const itemIndex = orderItems.findIndex(item => item.id === itemId);
+    if (itemIndex === -1) {
+        console.log('Item not found in order');
+        return;
+    }
+    
+    const menuItem = menuItems.find(item => item.id === itemId);
+    if (!menuItem) {
+        console.log('Menu item not found');
+        removeFromOrder(itemId);
+        return;
+    }
+    
+    const newQuantity = orderItems[itemIndex].quantity + change;
+    
+    if (newQuantity < 1) {
+        removeFromOrder(itemId);
+        return;
+    }
+    
+    // Check stock for increase
+    if (change > 0 && newQuantity > menuItem.stock) {
+        showToast(`${orderItems[itemIndex].name} လက်ကျန်မလုံလောက်ပါ (လက်ကျန်: ${menuItem.stock})`, 'error');
+        return;
+    }
+    
+    orderItems[itemIndex].quantity = newQuantity;
+    orderItems[itemIndex].total = newQuantity * orderItems[itemIndex].price;
+    
+    updateOrderDisplay();
+}
+
+function removeFromOrder(itemId) {
+    console.log('Removing item from order:', itemId);
+    
+    const itemIndex = orderItems.findIndex(item => item.id === itemId);
+    if (itemIndex === -1) return;
+    
+    const itemName = orderItems[itemIndex].name;
+    orderItems.splice(itemIndex, 1);
+    
+    updateOrderDisplay();
+    showToast(`${itemName} ကို order မှ ဖယ်ရှားပြီးပါပြီ`);
+}
+
+function clearOrder() {
+    if (orderItems.length === 0) {
+        showToast('Order မရှိပါ');
+        return;
+    }
+    
+    if (confirm('Order အားလုံးကို ဖယ်ရှားမှာလား?')) {
+        orderItems = [];
+        updateOrderDisplay();
+        showToast('Order အားလုံးကို ဖယ်ရှားပြီးပါပြီ');
+    }
+}
+
+// ===========================
+// Payment Functions
+// ===========================
+function updatePaymentSummary() {
+    const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
+    
+    // Get checkbox states
+    const taxCheckbox = document.getElementById('tax-checkbox');
+    const serviceCheckbox = document.getElementById('service-checkbox');
+    
+    const applyTax = taxCheckbox ? taxCheckbox.checked : false;
+    const applyService = serviceCheckbox ? serviceCheckbox.checked : false;
+    
+    // Calculate charges
+    const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+    const service = applyService ? Math.round(subtotal * 0.1) : 0;
+    
+    const total = subtotal + tax + service;
+    
+    // Update UI elements
+    const subTotalEl = document.getElementById('sub-total');
+    const taxEl = document.getElementById('tax');
+    const serviceEl = document.getElementById('service-charge');
+    const totalEl = document.getElementById('total-amount');
+    
+    if (subTotalEl) subTotalEl.textContent = subtotal.toLocaleString() + ' KS';
+    if (taxEl) taxEl.textContent = tax.toLocaleString() + ' KS';
+    if (serviceEl) serviceEl.textContent = service.toLocaleString() + ' KS';
+    if (totalEl) totalEl.textContent = total.toLocaleString() + ' KS';
+}
+
+// ===========================
+// Save Order Functions
+// ===========================
+function saveOrder() {
+    if (orderItems.length === 0) {
+        showToast('သိမ်းဆည်းရန် order မရှိပါ', 'error');
+        return;
+    }
+    
+    if (currentRoom === 'မရွေးရသေးပါ') {
+        showToast('ကျေးဇူးပြု၍ အခန်းရွေးချယ်ပါ', 'error');
+        setTimeout(() => {
+            window.location.href = '/rooms';
+        }, 1500);
+        return;
+    }
+    
+    // Calculate totals
+    const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
+    const applyTax = document.getElementById('tax-checkbox')?.checked || false;
+    const applyService = document.getElementById('service-checkbox')?.checked || false;
+    const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+    const service = applyService ? Math.round(subtotal * 0.1) : 0;
+    const total = subtotal + tax + service;
+    
+    // Prepare order data
+    const orderData = {
+        room: currentRoom,
+        items: orderItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            total: item.total
+        })),
+        subtotal: subtotal,
+        tax: tax,
+        service: service,
+        total: total,
+        saved_at: new Date().toISOString(),
+        staff: document.getElementById('staff-name')?.textContent || 'အက်မင်'
+    };
+    
+    // Get room ID from storage
+    const activeRoom = localStorage.getItem('ktv_active_room');
+    let roomId = currentRoom;
+    
+    try {
+        if (activeRoom) {
+            const roomData = JSON.parse(activeRoom);
+            roomId = roomData.id || roomData;
+        }
+    } catch (error) {
+        console.error('Error parsing room data:', error);
+    }
+    
+    // Save to localStorage
+    const roomOrders = JSON.parse(localStorage.getItem('ktv_room_orders') || '{}');
+    roomOrders[roomId] = orderData;
+    localStorage.setItem('ktv_room_orders', JSON.stringify(roomOrders));
+    
+    // Save temporary backup
+    localStorage.setItem('ktv_temp_order', JSON.stringify(orderItems));
+    
+    showToast(`${currentRoom} အခန်းအတွက် အမှာစာ သိမ်းဆည်းပြီးပါပြီ`, 'success');
+}
+
+// ===========================
+// Checkout Process
+// ===========================
+function processCheckout() {
+    if (orderItems.length === 0) {
+        showToast('Checkout လုပ်ရန် Order ထည့်ပါ!', 'error');
+        return;
+    }
+    
+    if (currentRoom === 'မရွေးရသေးပါ') {
+        showToast('ကျေးဇူးပြု၍ အခန်းရွေးချယ်ပါ', 'error');
+        return;
+    }
+    
+    // Calculate final total
+    const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
+    const applyTax = document.getElementById('tax-checkbox')?.checked || false;
+    const applyService = document.getElementById('service-checkbox')?.checked || false;
+    const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+    const service = applyService ? Math.round(subtotal * 0.1) : 0;
+    const total = subtotal + tax + service;
+    
+    const confirmMessage = 
+        `Checkout လုပ်မှာသေချာပါသလား?\n\n` +
+        `အခန်း: ${currentRoom}\n` +
+        `စုစုပေါင်း: ${subtotal.toLocaleString()} KS\n` +
+        `Tax: ${tax.toLocaleString()} KS\n` +
+        `Service: ${service.toLocaleString()} KS\n` +
+        `ကျသင့်ငွေ: ${total.toLocaleString()} KS\n\n` +
+        `OK နှိပ်ပါ - Checkout လုပ်မည်\n` +
+        `Cancel နှိပ်ပါ - ပြန်လည်စစ်ဆေးမည်`;
+    
+    if (confirm(confirmMessage)) {
+        // Save sale record
+        saveSaleRecord();
+        
+        // Print bill
+        printBill();
+        
+        // Clear order after successful checkout
+        setTimeout(() => {
+            clearOrder();
+            
+            // Clear saved order for this room
+            const activeRoom = localStorage.getItem('ktv_active_room');
+            if (activeRoom) {
+                let roomId = currentRoom;
+                try {
+                    const roomData = JSON.parse(activeRoom);
+                    roomId = roomData.id || roomData;
+                } catch (error) {
+                    console.error('Error parsing room data:', error);
+                }
+                
+                const roomOrders = JSON.parse(localStorage.getItem('ktv_room_orders') || '{}');
+                if (roomOrders[roomId]) {
+                    delete roomOrders[roomId];
+                    localStorage.setItem('ktv_room_orders', JSON.stringify(roomOrders));
+                }
+            }
+            
+            // Clear temporary order
+            localStorage.removeItem('ktv_temp_order');
+            
+            showToast('Checkout အောင်မြင်ပါပြီ။', 'success');
+        }, 1000);
+    }
+}
+
+function saveSaleRecord() {
+    // In a real application, this would save to a database
+    // For now, we'll save to localStorage
+    const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
+    const applyTax = document.getElementById('tax-checkbox')?.checked || false;
+    const applyService = document.getElementById('service-checkbox')?.checked || false;
+    const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+    const service = applyService ? Math.round(subtotal * 0.1) : 0;
+    const total = subtotal + tax + service;
+    
+    const saleRecord = {
+        id: Date.now(),
+        room: currentRoom,
+        items: orderItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            total: item.total
+        })),
+        subtotal: subtotal,
+        tax: tax,
+        service: service,
+        total: total,
+        timestamp: new Date().toISOString(),
+        staff: document.getElementById('staff-name')?.textContent || 'အက်မင်'
+    };
+    
+    // Get existing sales records
+    const sales = JSON.parse(localStorage.getItem('ktv_sales') || '[]');
+    sales.push(saleRecord);
+    localStorage.setItem('ktv_sales', JSON.stringify(sales));
+    
+    return true;
+}
+
+// ===========================
+// Print Bill Functions
+// ===========================
+function printBill() {
+    if (orderItems.length === 0) {
+        showToast('Print ထုတ်ရန် Order ထည့်ပါ!', 'error');
+        return;
+    }
+    
+    const printContent = generateBillContent();
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('Popup ပိတ်ထားသဖြင့် Print မထုတ်နိုင်ပါ', 'error');
+        return;
+    }
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    
+    // Auto-print after a short delay
+    setTimeout(() => {
+        printWindow.print();
+        
+        // Close window after print
+        printWindow.onafterprint = function() {
+            setTimeout(() => {
+                printWindow.close();
+            }, 500);
+        };
+    }, 500);
+}
+
+function generateBillContent() {
+    const now = new Date();
+    const day = now.getDate().toString().padStart(2, '0');
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const year = now.getFullYear();
+    const date = `${day}/${month}/${year}`;
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const time = `${hours}:${minutes}`;
+    const billNumber = 'SW-' + year + month + day + '-' + 
+                     Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    
+    // Calculate totals
+    const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
+    const applyTax = document.getElementById('tax-checkbox')?.checked || false;
+    const applyService = document.getElementById('service-checkbox')?.checked || false;
+    const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+    const service = applyService ? Math.round(subtotal * 0.1) : 0;
+    const total = subtotal + tax + service;
+    
+    let itemsHTML = '';
+    orderItems.forEach((item, index) => {
+        itemsHTML += `
+            <tr>
+                <td style="text-align: center; padding: 3px; font-size: 10px;">${index + 1}</td>
+                <td style="text-align: left; padding: 3px 5px; font-size: 10px;">${item.name}</td>
+                <td style="text-align: center; padding: 3px; font-size: 10px;">${item.quantity}</td>
+                <td style="text-align: right; padding: 3px; font-size: 10px;">${item.price.toLocaleString()}</td>
+                <td style="text-align: right; padding: 3px; font-size: 10px;">${item.total.toLocaleString()}</td>
+            </tr>
+        `;
+    });
+    
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>KTV Bill - ${billNumber}</title>
+            <style>
+                @page {
+                    size: 80mm auto;
+                    margin: 0;
+                }
+                
+                body {
+                    font-family: 'Noto Sans Myanmar', sans-serif;
+                    width: 80mm;
+                    margin: 0;
+                    padding: 10px;
+                    font-size: 10pt;
+                    background: white;
+                    color: black;
+                }
+                
+                .header {
+                    text-align: center;
+                    margin-bottom: 5mm;
+                    padding-bottom: 3mm;
+                    border-bottom: 1px solid #000;
+                }
+                
+                .restaurant-name {
+                    font-size: 14pt;
+                    font-weight: bold;
+                    margin: 1mm 0;
+                }
+                
+                .restaurant-info {
+                    font-size: 8pt;
+                    margin: 1mm 0;
+                }
+                
+                .bill-info {
+                    margin: 3mm 0;
+                    font-size: 8pt;
+                }
+                
+                .bill-info-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 1mm 0;
+                }
+                
+                .items-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 3mm 0;
+                    font-size: 8pt;
+                }
+                
+                .items-table th {
+                    border: 1px solid #000;
+                    padding: 2px;
+                    background: #f0f0f0;
+                    font-weight: bold;
+                    text-align: center;
+                }
+                
+                .items-table td {
+                    border: 1px solid #000;
+                    padding: 2px;
+                }
+                
+                .summary {
+                    margin-top: 4mm;
+                    font-size: 9pt;
+                }
+                
+                .summary-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 1px 0;
+                }
+                
+                .total-row {
+                    border-top: 2px solid #000;
+                    padding-top: 2mm;
+                    margin-top: 2mm;
+                    font-weight: bold;
+                }
+                
+                .footer {
+                    text-align: center;
+                    margin-top: 5mm;
+                    padding-top: 2mm;
+                    border-top: 1px dashed #000;
+                    font-size: 8pt;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div class="restaurant-name">SMILE WORLD KTV</div>
+                <div class="restaurant-info">မြို့ရှောင်လမ်း၊ မှော်ဘီမြို့</div>
+                <div class="restaurant-info">ဖုန်း - ၀၉-၄၂၅၅၇၃၅၉၈</div>
+            </div>
+            
+            <div class="bill-info">
+                <div class="bill-info-row">
+                    <span>ဘေလ်အမှတ်:</span>
+                    <span>${billNumber}</span>
+                </div>
+                <div class="bill-info-row">
+                    <span>ရက်စွဲ:</span>
+                    <span>${date} ${time}</span>
+                </div>
+                <div class="bill-info-row">
+                    <span>အခန်း:</span>
+                    <span>${currentRoom}</span>
+                </div>
+                <div class="bill-info-row">
+                    <span>ဝန်ထမ်း:</span>
+                    <span>${document.getElementById('staff-name')?.textContent || 'အက်မင်'}</span>
+                </div>
+            </div>
+            
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">စဉ်</th>
+                        <th style="width: 52%;">Menu Name</th>
+                        <th style="width: 10%;">Qty</th>
+                        <th style="width: 15%;">ဈေးနှုန်း</th>
+                        <th style="width: 15%;">သင့်ငွေ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsHTML}
+                </tbody>
+            </table>
+            
+            <div class="summary">
+                <div class="summary-row">
+                    <span>Sub Total:</span>
+                    <span>${subtotal.toLocaleString()} Ks</span>
+                </div>
+                ${applyTax ? `
+                <div class="summary-row">
+                    <span>Tax (5%):</span>
+                    <span>${tax.toLocaleString()} Ks</span>
+                </div>
+                ` : ''}
+                ${applyService ? `
+                <div class="summary-row">
+                    <span>Service (10%):</span>
+                    <span>${service.toLocaleString()} Ks</span>
+                </div>
+                ` : ''}
+                <div class="summary-row total-row">
+                    <span>TOTAL:</span>
+                    <span>${total.toLocaleString()} Ks</span>
+                </div>
+                <div class="summary-row" style="font-weight: bold; margin-top: 1mm;">
+                    <span>ငွေရှင်းရန်:</span>
+                    <span>${total.toLocaleString()} Ks</span>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <div>ကျေးဇူးတင်ပါသည်။</div>
+                <div>ကျေးဇူးပြု၍ လာရောက်ပြန်လည်ဝယ်ယူပေးပါရန်</div>
+                <div style="margin-top: 2mm; font-size: 7pt; color: #666;">
+                    Printed: ${date} ${time}
+                </div>
+            </div>
+            
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                    }, 500);
+                };
+                
+                window.onafterprint = function() {
+                    setTimeout(function() {
+                        window.close();
+                    }, 500);
+                };
+            </script>
+        </body>
+        </html>
+    `;
+}
+
+// ===========================
+// Toast Notification Function
+// ===========================
+function showToast(message, type = 'success') {
+    console.log('Toast:', type, message);
+    
+    // Create toast container if it doesn't exist
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        `;
+        document.body.appendChild(container);
+    }
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.textContent = message;
+    
+    // Set styles based on type
+    let backgroundColor = '#4caf50'; // Success (green)
+    if (type === 'error') backgroundColor = '#f44336';
+    if (type === 'info') backgroundColor = '#2196f3';
+    if (type === 'warning') backgroundColor = '#ff9800';
+    
+    toast.style.cssText = `
+        padding: 15px 20px;
+        border-radius: 8px;
+        background: ${backgroundColor};
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        animation: slideIn 0.3s ease;
+        font-family: 'Noto Sans Myanmar', sans-serif;
+        font-size: 14px;
+        min-width: 300px;
+        max-width: 400px;
+        color: white;
+        margin-bottom: 10px;
+    `;
+    
+    container.appendChild(toast);
+    
+    // Add CSS animation styles if not already added
+    if (!document.querySelector('#toast-styles')) {
+        const style = document.createElement('style');
+        style.id = 'toast-styles';
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Remove toast after 3 seconds
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// ===========================
+// Export Functions for Global Access
+// ===========================
+window.addToOrder = addToOrder;
+window.removeFromOrder = removeFromOrder;
+window.updateQuantity = updateQuantity;
+window.clearOrder = clearOrder;
+window.saveOrder = saveOrder;
+window.processCheckout = processCheckout;
+window.printBill = printBill;
+window.goToRooms = goToRooms;
+window.refreshMenu = refreshMenu;
+window.showToast = showToast;
+
+console.log('sale.js functions exported to global scope');

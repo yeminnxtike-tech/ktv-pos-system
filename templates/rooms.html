@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>အခန်းများ - KTV စားသောက်ဆိုင်</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/rooms.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar Navigation (Left Side) -->
+    <nav class="sidebar" id="sidebar">
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <div class="user-details">
+                <h3>{{ session.get('full_name', 'အက်မင်') }}</h3>
+                <p>အဆင့် - {{ session.get('role', 'အက်မင်') }}</p>
+                <p id="login-time">လော့ဂ်အင်: <span id="login-time-value">၀၈:၁၅</span></p>
+            </div>
+        </div>
+        
+        <ul class="nav-menu">
+            <li><a href="/"><i class="fas fa-tachometer-alt"></i> ဒက်ရှ်ဘုတ်</a></li>
+            <li><a href="/sale"><i class="fas fa-shopping-cart"></i> အရောင်း</a></li>
+            <li><a href="/rooms" class="active"><i class="fas fa-door-closed"></i> အခန်းများ</a></li>
+            <li><a href="/menu"><i class="fas fa-utensils"></i> မီနူးနှင့် ပစ္စည်း</a></li>
+            <li><a href="/stocks"><i class="fas fa-boxes"></i> ပစ္စည်း အဝင်/အထွက်</a></li>
+            <li><a href="/reports"><i class="fas fa-chart-line"></i> အမြတ်/အရှုံး</a></li>
+            <li class="nav-divider"></li>
+            <li><a href="#"><i class="fas fa-history"></i> အရောင်းမှတ်တမ်း</a></li>
+            <li><a href="#"><i class="fas fa-clipboard-list"></i> ဝယ်ယူမှု</a></li>
+            <li><a href="#"><i class="fas fa-history"></i> ဝယ်ယူမှု မှတ်တမ်း</a></li>
+            <li><a href="#"><i class="fas fa-money-check-alt"></i> ကုမ္ပဏီများအား ပေးချေမှု</a></li>
+            <li><a href="#"><i class="fas fa-receipt"></i> ကုန်ကျစရိတ်</a></li>
+            <li><a href="#"><i class="fas fa-exclamation-triangle"></i> ပျက်စီးဆုံးရှုံးမှု</a></li>
+        </ul>
+        
+        <div class="system-info">
+            <p><i class="fas fa-database"></i> Database အရွယ် - <span id="db-size">၀.၇ MB</span></p>
+            <div class="backup-section">
+                <p><i class="fas fa-save"></i> Database ကူးယူခြင်း (Local)</p>
+                <button class="btn-backup" id="backup-btn"><i class="fas fa-download"></i> ယခုကူးယူမည်</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-top">
+                <h1><i class="fas fa-microphone-alt"></i> SMILE WORLD KTV</h1>
+                <div class="header-info">
+                    <div class="restaurant-info">
+                        <p>မြို့ရှောင်လမ်း၊ မှော်ဘီမြို့</p>
+                        <p class="contact-info">
+                            <i class="fas fa-phone"></i> ဖုန်း - ၀၉-၄၂၅၅၇၃၅၉၈ | 
+                            <i class="fas fa-database"></i> Database - ၅၈
+                        </p>
+                    </div>
+                    <div class="datetime">
+                        <div>ရက်စွဲ: <span id="current-date">၁၂-၀၃-၂၀၂၄</span></div>
+                        <div>အချိန်: <span id="current-time">၁၄:၃၀</span></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Rooms Main Content -->
+        <div class="rooms-content">
+            <!-- Rooms Header -->
+            <div class="rooms-header">
+                <h2><i class="fas fa-door-closed"></i> အခန်းများ စီမံခန့်ခွဲမှု</h2>
+                <div class="room-header-actions">
+                    <button class="btn-primary" id="new-order">
+                        <i class="fas fa-plus-circle"></i> အမှာစာအသစ်
+                    </button>
+                    <button class="btn-success" id="add-room">
+                        <i class="fas fa-plus-circle"></i> အခန်းအသစ်ထည့်မည်
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search and Filters -->
+            <div class="search-section">
+                <div class="search-box">
+                    <input type="text" id="room-search" placeholder="အခန်း အမည် ရှာပါ...">
+                    <button id="search-btn">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+                <div class="room-filters">
+                    <button class="filter-btn active" data-type="all">အားလုံး</button>
+                    <button class="filter-btn" data-type="VIP">VIP</button>
+                    <button class="filter-btn" data-type="Standard">Standard</button>
+                    <button class="filter-btn" data-type="Family">Family</button>
+                    <button class="filter-btn" data-type="Deluxe">Deluxe</button>
+                    <button class="filter-btn" data-type="Executive">Executive</button>
+                    <button class="filter-btn" data-type="occupied">ရှိပါသည်</button>
+                    <button class="filter-btn" data-type="available">လစ်လပ်ပါသည်</button>
+                    <button class="filter-btn" data-type="has-orders">မှာစာရှိ</button>
+                </div>
+            </div>
+
+            <!-- Rooms Grid with Action Buttons -->
+            <div class="rooms-grid-container">
+                <div class="rooms-grid" id="rooms-grid">
+                    <!-- Rooms will be loaded by JavaScript -->
+                    <div class="loading-rooms">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>အခန်းများ ဖော်ပြရန် ပြင်ဆင်နေပါသည်...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Room Statistics -->
+            <div class="room-stats">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-door-closed"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h4>စုစုပေါင်း အခန်း</h4>
+                        <div class="stat-value" id="total-rooms">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-door-open"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h4>လစ်လပ်သော အခန်း</h4>
+                        <div class="stat-value" id="available-rooms">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h4>ရှိသော အခန်း</h4>
+                        <div class="stat-value" id="occupied-rooms">0</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-shopping-cart"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h4>မှာစာရှိ အခန်း</h4>
+                        <div class="stat-value" id="rooms-with-orders">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>&copy; 2026 SMILE WORLD KTV. Database: <span id="db-version">၅၈</span> | Mode: <span id="current-mode">အခန်းများ</span></p>
+            <div class="footer-links">
+                <a href="#"><i class="fas fa-cog"></i> ဆက်တင်များ</a>
+                <a href="#"><i class="fas fa-question-circle"></i> အကူအညီ</a>
+                <a href="/logout"><i class="fas fa-sign-out-alt"></i> ထွက်မည်</a>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Room Edit Modal -->
+    <div class="modal" id="room-edit-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="room-modal-title">အခန်းအသစ်ထည့်သွင်းခြင်း</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <form id="room-form">
+                <input type="hidden" id="room-id" value="">
+                <div class="form-group">
+                    <label for="room-name">အခန်းအမည် *</label>
+                    <input type="text" id="room-name" required placeholder="ဥပမာ: VIP ၁">
+                </div>
+                <div class="form-group">
+                    <label for="room-type">အခန်းအမျိုးအစား *</label>
+                    <select id="room-type" required>
+                        <option value="">ရွေးချယ်ပါ</option>
+                        <option value="VIP">VIP</option>
+                        <option value="Standard">Standard</option>
+                        <option value="Family">Family</option>
+                        <option value="Deluxe">Deluxe</option>
+                        <option value="Executive">Executive</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="room-capacity">လူဦးရေစွမ်းရည် *</label>
+                    <input type="number" id="room-capacity" min="1" max="20" required value="4">
+                </div>
+                <div class="form-group">
+                    <label for="room-price">အခန်းခ (ကျပ်) *</label>
+                    <input type="number" id="room-price" min="0" required value="30000">
+                </div>
+                <div class="form-group">
+                    <label for="room-status">အခန်းအခြေအနေ</label>
+                    <select id="room-status">
+                        <option value="လစ်လပ်ပါသည်">လစ်လပ်ပါသည်</option>
+                        <option value="ရှိပါသည်">ရှိပါသည်</option>
+                        <option value="ကြိုတင်ယူထား">ကြိုတင်ယူထား</option>
+                        <option value="ပြင်ဆင်နေဆဲ">ပြင်ဆင်နေဆဲ</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="room-description-input">အခန်းအကြောင်း</label>
+                    <textarea id="room-description-input" placeholder="အခန်း၏ အထူးအချက်အလက်များ..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="cancel-room">
+                        <i class="fas fa-times"></i> ပယ်ဖျက်
+                    </button>
+                    <button type="button" class="btn-primary" id="save-room">
+                        <i class="fas fa-save"></i> သိမ်းဆည်း
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Room Modal -->
+    <div class="modal" id="delete-room-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>အခန်းဖျက်ခြင်း</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="delete-room-message"></p>
+                <p style="color: #ff5252; margin-top: 10px;">
+                    <i class="fas fa-exclamation-triangle"></i> သတိပြုရန်: ဤလုပ်ဆောင်ချက်ကို ပြန်လည်ရုပ်သိမ်း၍မရပါ။
+                </p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="cancel-delete">
+                    <i class="fas fa-times"></i> မဖျက်တော့ပါ
+                </button>
+                <button type="button" class="btn-danger" id="confirm-delete">
+                    <i class="fas fa-trash"></i> ဖျက်မည်
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Room View Modal -->
+    <div class="modal" id="room-view-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>အခန်း အချက်အလက်များ</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="room-details-view">
+                    <div class="detail-row">
+                        <span class="detail-label">အခန်းအမည်:</span>
+                        <span class="detail-value" id="view-room-name">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">အခန်းအမျိုးအစား:</span>
+                        <span class="detail-value" id="view-room-type">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">လူဦးရေစွမ်းရည်:</span>
+                        <span class="detail-value" id="view-room-capacity">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">အခန်းခ:</span>
+                        <span class="detail-value" id="view-room-price">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">အခန်းအခြေအနေ:</span>
+                        <span class="detail-value" id="view-room-status">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">ဖန်တီးသည့်ရက်စွဲ:</span>
+                        <span class="detail-value" id="view-room-created">-</span>
+                    </div>
+                    <div class="detail-row full-width">
+                        <span class="detail-label">အခန်းအကြောင်း:</span>
+                        <p class="detail-value" id="view-room-description">အချက်အလက်မရှိပါ</p>
+                    </div>
+                </div>
+                <div class="room-orders" id="room-orders-section">
+                    <h4><i class="fas fa-shopping-cart"></i> ယခင်အမှာစာများ</h4>
+                    <div id="room-orders-list">
+                        <p style="text-align: center; color: #999; padding: 20px;">
+                            ယခင်အမှာစာများ မရှိပါ
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="close-view">
+                    <i class="fas fa-times"></i> ပိတ်မည်
+                </button>
+                <button type="button" class="btn-primary" id="use-this-room">
+                    <i class="fas fa-shopping-cart"></i> ဤအခန်းကို သုံးမည်
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- External JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/rooms.js') }}"></script>
+    
+    <script>
+        // Update time display
+        function updateTimeDisplay() {
+            const now = new Date();
+            const day = now.getDate().toString().padStart(2, '0');
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const year = now.getFullYear();
+            const dateStr = `${day}-${month}-${year}`;
+            
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const timeStr = `${hours}:${minutes}`;
+            
+            document.getElementById('current-date').textContent = dateStr;
+            document.getElementById('current-time').textContent = timeStr;
+        }
+        
+        updateTimeDisplay();
+        setInterval(updateTimeDisplay, 60000);
+        
+        // Update rooms with orders count
+        function updateRoomsWithOrdersCount() {
+            try {
+                const savedOrders = localStorage.getItem('ktv_room_orders');
+                const roomOrders = savedOrders ? JSON.parse(savedOrders) : {};
+                const roomsWithOrders = Object.keys(roomOrders).filter(roomId => 
+                    roomOrders[roomId] && roomOrders[roomId].length > 0
+                ).length;
+                
+                const roomsWithOrdersElement = document.getElementById('rooms-with-orders');
+                if (roomsWithOrdersElement) {
+                    roomsWithOrdersElement.textContent = roomsWithOrders;
+                }
+            } catch (error) {
+                console.error('Error updating rooms with orders count:', error);
+            }
+        }
+        
+        // Update on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(updateRoomsWithOrdersCount, 1000);
+            setInterval(updateRoomsWithOrdersCount, 5000);
+        });
+    </script>
+</body>
+</html>

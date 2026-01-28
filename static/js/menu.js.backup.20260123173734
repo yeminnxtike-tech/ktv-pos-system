@@ -1,0 +1,454 @@
+// Menu Page JavaScript
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Menu page loaded');
+    
+    // Initialize
+    initializeMenuPage();
+    
+    // Setup event listeners
+    setupEventListeners();
+});
+
+function initializeMenuPage() {
+    // Initialize search functionality
+    const searchInput = document.getElementById('menu-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            searchItems(this.value);
+        });
+    }
+    
+    // Initialize filter functionality
+    const categoryFilter = document.getElementById('category-filter');
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', function() {
+            filterByCategory(this.value);
+        });
+    }
+    
+    const statusFilter = document.getElementById('status-filter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', function() {
+            filterByStatus(this.value);
+        });
+    }
+}
+
+function setupEventListeners() {
+    // Add item button
+    const addBtn = document.getElementById('add-item-btn');
+    if (addBtn) {
+        addBtn.addEventListener('click', openAddItemModal);
+    }
+    
+    // Refresh button
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            location.reload();
+        });
+    }
+    
+    // Close modals when clicking outside
+    document.addEventListener('click', function(event) {
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    });
+}
+
+function searchItems(searchText) {
+    const rows = document.querySelectorAll('#menu-items-body tr');
+    searchText = searchText.toLowerCase().trim();
+    
+    rows.forEach(row => {
+        const itemName = row.querySelector('.item-name').textContent.toLowerCase();
+        const itemDesc = row.querySelector('.item-desc') ? 
+            row.querySelector('.item-desc').textContent.toLowerCase() : '';
+        
+        if (itemName.includes(searchText) || itemDesc.includes(searchText) || !searchText) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function filterByCategory(category) {
+    const rows = document.querySelectorAll('#menu-items-body tr');
+    
+    rows.forEach(row => {
+        const itemCategory = row.getAttribute('data-category');
+        
+        if (category === 'all' || itemCategory === category || !category) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function filterByStatus(status) {
+    const rows = document.querySelectorAll('#menu-items-body tr');
+    
+    rows.forEach(row => {
+        const itemStatus = row.getAttribute('data-status');
+        const itemStock = parseInt(row.getAttribute('data-stock')) || 0;
+        const itemMinStock = 5; // Default minimum stock
+        
+        let shouldShow = false;
+        
+        switch(status) {
+            case 'all':
+                shouldShow = true;
+                break;
+            case 'active':
+                shouldShow = itemStatus === 'active';
+                break;
+            case 'inactive':
+                shouldShow = itemStatus === 'inactive';
+                break;
+            case 'out_of_stock':
+                shouldShow = itemStock === 0;
+                break;
+            case 'low_stock':
+                shouldShow = itemStock > 0 && itemStock <= itemMinStock;
+                break;
+            default:
+                shouldShow = true;
+        }
+        
+        row.style.display = shouldShow ? '' : 'none';
+    });
+}
+
+function openAddItemModal() {
+    const modal = document.getElementById('item-modal');
+    if (modal) {
+        modal.style.display = 'block';
+        document.getElementById('modal-title').textContent = 'ပစ္စည်းအသစ်ထည့်ရန်';
+        document.getElementById('item-form').reset();
+        document.getElementById('item-id').value = '';
+    }
+}
+
+function closeItemModal() {
+    const modal = document.getElementById('item-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function openEditItemModal(itemId) {
+    // Fetch item data and populate form
+    fetch(`/api/menu_item/${itemId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.item) {
+                const item = data.item;
+                const modal = document.getElementById('item-modal');
+                
+                document.getElementById('modal-title').textContent = 'ပစ္စည်းပြင်ဆင်ရန်';
+                document.getElementById('item-id').value = item.id;
+                document.getElementById('item-name').value = item.name;
+                document.getElementById('category').value = item.category_id || '';
+                document.getElementById('unit').value = item.unit || 'ခု';
+                document.getElementById('sale-price').value = item.sale_price;
+                document.getElementById('cost-price').value = item.cost_price || '';
+                document.getElementById('stock').value = item.stock;
+                document.getElementById('min-stock').value = item.min_stock || 5;
+                document.getElementById('description').value = item.description || '';
+                document.getElementById('item-status').value = item.status || 'active';
+                
+                if (modal) {
+                    modal.style.display = 'block';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching item:', error);
+            alert('ပစ္စည်းအချက်အလက် ယူရာတွင် အမှားတစ်ခုဖြစ်နေသည်');
+        });
+}
+
+function saveItem() {
+    const form = document.getElementById('item-form');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    // Convert numeric values
+    data.sale_price = parseInt(data.sale_price) || 0;
+    data.cost_price = parseInt(data.cost_price) || 0;
+    data.stock = parseInt(data.stock) || 0;
+    data.min_stock = parseInt(data.min_stock) || 5;
+    data.category_id = parseInt(data.category_id) || null;
+    
+    const isEdit = data.item_id && data.item_id !== '';
+    const url = isEdit ? '/api/update_menu_item' : '/api/add_menu_item';
+    const method = isEdit ? 'PUT' : 'POST';
+    
+    // Disable save button and show loading
+    const saveBtn = document.querySelector('#item-modal .btn-primary');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> သိမ်းဆည်းနေသည်...';
+    saveBtn.disabled = true;
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('ပစ္စည်းသိမ်းဆည်းပြီးပါပြီ', 'success');
+            closeItemModal();
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            showToast(data.error || 'သိမ်းဆည်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Error saving item:', error);
+        showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+    });
+}
+
+function deleteItem(itemId) {
+    const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+    const itemName = row ? row.querySelector('.item-name').textContent : 'ဤပစ္စည်း';
+    
+    if (confirm(`${itemName} ကို ဖျက်မှာသေချာပါသလား?\n\nသတိထားရန်: ပစ္စည်းဖျက်လျှင်ယခင်အရောင်းမှတ်တမ်းများ ပျက်စီးနိုင်သည်။`)) {
+        fetch(`/api/delete_item/${itemId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('ပစ္စည်းဖျက်ပြီးပါပြီ', 'success');
+                // Remove from UI
+                const itemRow = document.querySelector(`tr[data-item-id="${itemId}"]`);
+                if (itemRow) {
+                    itemRow.remove();
+                    updateStats();
+                }
+            } else {
+                showToast(data.error || 'ဖျက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting item:', error);
+            showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        });
+    }
+}
+
+function updateStock(itemId) {
+    const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+    const itemName = row ? row.querySelector('.item-name').textContent : 'ဤပစ္စည်း';
+    
+    const quantity = prompt(`${itemName} အတွက် လက်ကျန်အသစ် ထည့်ပါ (အပေါင်းသို့မဟုတ် အနှုတ်):`, "0");
+    
+    if (quantity !== null) {
+        const parsedQuantity = parseInt(quantity);
+        if (!isNaN(parsedQuantity)) {
+            const reason = prompt('အကြောင်းရင်းထည့်ပါ (optional):', '');
+            
+            fetch('/api/update_stock', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    item_id: itemId,
+                    quantity: parsedQuantity,
+                    reason: reason || '',
+                    notes: ''
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('လက်ကျန်အပ်ဒိတ်လုပ်ပြီးပါပြီ', 'success');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    showToast(data.error || 'လက်ကျန်အပ်ဒိတ်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating stock:', error);
+                showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            });
+        }
+    }
+}
+
+function uploadImage(itemId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    
+    input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (!file.type.startsWith('image/')) {
+            showToast('ကျေးဇူးပြု၍ ပုံဖိုင်သာရွေးပါ', 'error');
+            return;
+        }
+        
+        if (file.size > 2 * 1024 * 1024) {
+            showToast('ဖိုင်အရွယ်အစား 2MB ထက်မကျော်ရ', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('item_id', itemId);
+        
+        fetch('/api/upload_item_image', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('ပုံတင်ပြီးပါပြီ', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                showToast(data.error || 'ပုံတင်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error uploading image:', error);
+            showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        });
+    };
+    
+    input.click();
+}
+
+function updateStats() {
+    const rows = document.querySelectorAll('#menu-items-body tr');
+    let activeCount = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+    
+    rows.forEach(row => {
+        if (row.style.display !== 'none') {
+            const status = row.getAttribute('data-status');
+            const stock = parseInt(row.getAttribute('data-stock')) || 0;
+            
+            if (status === 'active') activeCount++;
+            if (stock === 0) outOfStockCount++;
+            if (stock > 0 && stock <= 5) lowStockCount++; // Assuming min_stock = 5
+        }
+    });
+    
+    // Update stats display
+    document.getElementById('active-count').textContent = activeCount;
+    document.getElementById('low-stock-count').textContent = lowStockCount;
+    document.getElementById('out-of-stock-count').textContent = outOfStockCount;
+}
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container') || createToastContainer();
+    
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.cssText = `
+        padding: 12px 16px;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s ease;
+        font-family: 'Noto Sans Myanmar', sans-serif;
+        font-size: 13px;
+        min-width: 280px;
+        max-width: 350px;
+        color: white;
+    `;
+    
+    toast.textContent = message;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }, 3000);
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText = `
+        position: fixed;
+        top: 15px;
+        right: 15px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    `;
+    document.body.appendChild(container);
+    
+    // Add animation styles if not already present
+    if (!document.querySelector('#toast-animations')) {
+        const style = document.createElement('style');
+        style.id = 'toast-animations';
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    return container;
+}
+
+// Make functions globally available
+window.searchItems = searchItems;
+window.filterByCategory = filterByCategory;
+window.filterByStatus = filterByStatus;
+window.openAddItemModal = openAddItemModal;
+window.closeItemModal = closeItemModal;
+window.saveItem = saveItem;
+window.deleteItem = deleteItem;
+window.updateStock = updateStock;
+window.uploadImage = uploadImage;
+window.openEditItemModal = openEditItemModal;

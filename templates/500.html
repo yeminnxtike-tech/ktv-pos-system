@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ဆာဗာအမှား - KTV POS</title>
+    <style>
+        body {
+            font-family: 'Noto Sans Myanmar', sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+        }
+        .error-container {
+            padding: 40px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+        }
+        h1 {
+            font-size: 120px;
+            margin: 0;
+            color: white;
+        }
+        h2 {
+            margin: 20px 0;
+        }
+        .btn {
+            display: inline-block;
+            margin: 10px;
+            padding: 12px 30px;
+            background: white;
+            color: #f5576c;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1>500</h1>
+        <h2>ဆာဗာအမှား</h2>
+        <p>ဆာဗာတွင်ပြဿနာတစ်ခုရှိနေသည်။ ကျေးဇူးပြု၍ နောက်မှထပ်ကြိုးစားကြည့်ပါ။</p>
+        <div>
+            <a href="/" class="btn">ပင်မစာမျက်နှာသို့</a>
+            <a href="javascript:history.back()" class="btn" style="background: transparent; border: 2px solid white; color: white;">နောက်သို့</a>
+        </div>
+    </div>
+</body>
+</html>

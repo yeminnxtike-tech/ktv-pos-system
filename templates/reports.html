@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+
+{% block title %}အစီရင်ခံစာများ - KTV POS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
+{% endblock %}
+
+{% block mode %}အစီရင်ခံစာများ{% endblock %}
+
+{% block content %}
+<div class="reports-page">
+    <!-- Reports Header -->
+    <div class="reports-header">
+        <div class="header-left">
+            <h2><i class="fas fa-chart-line"></i> အမြတ်/အရှုံး အစီရင်ခံစာများ</h2>
+            <p class="subtitle">နေ့စဉ်၊ လစဉ် ရောင်းအားနှင့် အမြတ်ငွေ ကြည့်ရှုနိုင်သည်</p>
+        </div>
+        <div class="header-actions">
+            <div class="date-range">
+                <input type="date" id="start-date" value="{{ today }}">
+                <span>မှ</span>
+                <input type="date" id="end-date" value="{{ today }}">
+                <button class="btn btn-primary" onclick="loadReport()">
+                    <i class="fas fa-search"></i> ရှာရန်
+                </button>
+            </div>
+            <button class="btn btn-success" onclick="exportReport()">
+                <i class="fas fa-file-export"></i> Excel ထုတ်ရန်
+            </button>
+            <button class="btn btn-info" onclick="printReport()">
+                <i class="fas fa-print"></i> ပရင့်ထုတ်ရန်
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="summary-stats">
+        <div class="stat-card">
+            <div class="stat-icon daily">
+                <i class="fas fa-calendar-day"></i>
+            </div>
+            <div class="stat-info">
+                <h3>ယနေ့ အရောင်း</h3>
+                <div class="stat-value" id="today-sales">0 Ks</div>
+                <div class="stat-profit" id="today-profit">အမြတ်: 0 Ks</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon monthly">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <div class="stat-info">
+                <h3>ဒီလိ အရောင်း</h3>
+                <div class="stat-value" id="monthly-sales">0 Ks</div>
+                <div class="stat-profit" id="monthly-profit">အမြတ်: 0 Ks</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon items">
+                <i class="fas fa-box"></i>
+            </div>
+            <div class="stat-info">
+                <h3>ယနေ့ ရောင်းသွင်းမှု</h3>
+                <div class="stat-value" id="today-items">0 ခု</div>
+                <div class="stat-detail" id="today-items-count">0 မျိုး</div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon rooms">
+                <i class="fas fa-door-closed"></i>
+            </div>
+            <div class="stat-info">
+                <h3>ယနေ့ ဝန်ဆောင်မှု</h3>
+                <div class="stat-value" id="today-rooms">0 အခန်း</div>
+                <div class="stat-detail" id="today-customers">0 ဦး</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-navigation">
+        <button class="tab-btn active" onclick="switchTab('daily')">
+            <i class="fas fa-sun"></i> နေ့စဉ် အရောင်း
+        </button>
+        <button class="tab-btn" onclick="switchTab('monthly')">
+            <i class="fas fa-calendar"></i> လစဉ် အရောင်း
+        </button>
+        <button class="tab-btn" onclick="switchTab('items')">
+            <i class="fas fa-utensils"></i> ပစ္စည်း အရောင်း
+        </button>
+        <button class="tab-btn" onclick="switchTab('profit')">
+            <i class="fas fa-money-bill-wave"></i> အမြတ်ငွေ
+        </button>
+    </div>
+
+    <!-- Daily Sales Tab -->
+    <div class="tab-content active" id="daily-tab">
+        <div class="tab-header">
+            <h3><i class="fas fa-sun"></i> နေ့စဉ် အရောင်း စာရင်း</h3>
+            <div class="date-selector">
+                <input type="date" id="daily-date" value="{{ today }}" onchange="loadDailyReport()">
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>အချိန်</th>
+                        <th>ဘေလ်နံပါတ်</th>
+                        <th>အခန်း</th>
+                        <th>ပစ္စည်းများ</th>
+                        <th>လက္ခဏာ</th>
+                        <th>အရောင်းစုစုပေါင်း</th>
+                        <th>ကုန်ကျငွေ</th>
+                        <th>အမြတ်ငွေ</th>
+                        <th>ဝန်ဆောင်ခ</th>
+                        <th>အခွန်</th>
+                        <th>ဝန်ထမ်း</th>
+                    </tr>
+                </thead>
+                <tbody id="daily-sales-body">
+                    <!-- Daily sales will be loaded here -->
+                </tbody>
+                <tfoot>
+                    <tr class="summary-row">
+                        <td colspan="5"><strong>စုစုပေါင်း</strong></td>
+                        <td id="daily-total-sales">0 Ks</td>
+                        <td id="daily-total-cost">0 Ks</td>
+                        <td id="daily-total-profit">0 Ks</td>
+                        <td id="daily-total-service">0 Ks</td>
+                        <td id="daily-total-tax">0 Ks</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Monthly Sales Tab -->
+    <div class="tab-content" id="monthly-tab">
+        <div class="tab-header">
+            <h3><i class="fas fa-calendar"></i> လစဉ် အရောင်း စာရင်း</h3>
+            <div class="month-selector">
+                <select id="month-select" onchange="loadMonthlyReport()">
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {% if i == current_month %}selected{% endif %}>
+                        {{ i }} လ
+                    </option>
+                    {% endfor %}
+                </select>
+                <select id="year-select" onchange="loadMonthlyReport()">
+                    {% for year in range(2023, 2027) %}
+                    <option value="{{ year }}" {% if year == current_year %}selected{% endif %}>
+                        {{ year }} ခုနှစ်
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="monthly-sales-chart"></canvas>
+        </div>
+        
+        <div class="table-container">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>ရက်စွဲ</th>
+                        <th>အရောင်းအရေအတွက်</th>
+                        <th>အရောင်းစုစုပေါင်း</th>
+                        <th>ကုန်ကျငွေ</th>
+                        <th>အမြတ်ငွေ</th>
+                        <th>ဝန်ဆောင်ခ</th>
+                        <th>အခွန်</th>
+                        <th>ဧည့်သည်ဦးရေ</th>
+                    </tr>
+                </thead>
+                <tbody id="monthly-sales-body">
+                    <!-- Monthly sales will be loaded here -->
+                </tbody>
+                <tfoot>
+                    <tr class="summary-row">
+                        <td><strong>လစုစုပေါင်း</strong></td>
+                        <td id="monthly-count">0</td>
+                        <td id="monthly-total-sales">0 Ks</td>
+                        <td id="monthly-total-cost">0 Ks</td>
+                        <td id="monthly-total-profit">0 Ks</td>
+                        <td id="monthly-total-service">0 Ks</td>
+                        <td id="monthly-total-tax">0 Ks</td>
+                        <td id="monthly-total-customers">0</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Items Sales Tab -->
+    <div class="tab-content" id="items-tab">
+        <div class="tab-header">
+            <h3><i class="fas fa-utensils"></i> ပစ္စည်း အရောင်း စာရင်း</h3>
+            <div class="items-filter">
+                <select id="items-period" onchange="loadItemsReport()">
+                    <option value="today">ယနေ့</option>
+                    <option value="week">ဒီအပတ်</option>
+                    <option value="month">ဒီလ</option>
+                    <option value="custom">ကိုယ်ပိုင်ရွေးချယ်</option>
+                </select>
+                <input type="date" id="items-start-date" value="{{ today }}" style="display: none;">
+                <input type="date" id="items-end-date" value="{{ today }}" style="display: none;">
+            </div>
+        </div>
+        
+        <div class="items-stats">
+            <div class="items-summary">
+                <div class="summary-item">
+                    <div class="summary-label">စုစုပေါင်း ပစ္စည်းမျိုး</div>
+                    <div class="summary-value" id="total-item-types">0</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">စုစုပေါင်း ပမာဏ</div>
+                    <div class="summary-value" id="total-items-quantity">0</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">စုစုပေါင်း အရောင်းတန်ဖိုး</div>
+                    <div class="summary-value" id="total-items-sales">0 Ks</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">စုစုပေါင်း အမြတ်ငွေ</div>
+                    <div class="summary-value" id="total-items-profit">0 Ks</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>ပစ္စည်းအမည်</th>
+                        <th>အမျိုးအစား</th>
+                        <th>ရောင်းပမာဏ</th>
+                        <th>ယူနစ်</th>
+                        <th>ရောင်းဈေးနှုန်း</th>
+                        <th>ကုန်ကျဈေး</th>
+                        <th>အရောင်းတန်ဖိုး</th>
+                        <th>ကုန်ကျတန်ဖိုး</th>
+                        <th>အမြတ်ငွေ</th>
+                        <th>အမြတ်နှုန်း</th>
+                    </tr>
+                </thead>
+                <tbody id="items-sales-body">
+                    <!-- Items sales will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="items-chart">
+            <canvas id="items-sales-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- Profit Analysis Tab -->
+    <div class="tab-content" id="profit-tab">
+        <div class="tab-header">
+            <h3><i class="fas fa-money-bill-wave"></i> အမြတ်ငွေ ခွဲခြမ်းစိတ်ဖြာမှု</h3>
+            <div class="profit-filter">
+                <select id="profit-period" onchange="loadProfitReport()">
+                    <option value="today">ယနေ့</option>
+                    <option value="week">ဒီအပတ်</option>
+                    <option value="month" selected>ဒီလ</option>
+                    <option value="year">ဒီနှစ်</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="profit-overview">
+            <div class="profit-card">
+                <div class="profit-icon sales">
+                    <i class="fas fa-shopping-cart"></i>
+                </div>
+                <div class="profit-info">
+                    <h4>စုစုပေါင်း အရောင်း</h4>
+                    <div class="profit-value" id="total-gross-sales">0 Ks</div>
+                </div>
+            </div>
+            
+            <div class="profit-card">
+                <div class="profit-icon cost">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <div class="profit-info">
+                    <h4>စုစုပေါင်း ကုန်ကျ</h4>
+                    <div class="profit-value" id="total-cost">0 Ks</div>
+                </div>
+            </div>
+            
+            <div class="profit-card">
+                <div class="profit-icon net">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="profit-info">
+                    <h4>အသားတင် အမြတ်</h4>
+                    <div class="profit-value" id="net-profit">0 Ks</div>
+                    <div class="profit-percentage" id="profit-margin">0%</div>
+                </div>
+            </div>
+            
+            <div class="profit-card">
+                <div class="profit-icon expenses">
+                    <i class="fas fa-receipt"></i>
+                </div>
+                <div class="profit-info">
+                    <h4>အသုံးစရိတ်</h4>
+                    <div class="profit-value" id="total-expenses">0 Ks</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="profit-charts">
+            <div class="chart-box">
+                <h4>အမြတ်ငွေ ခွဲခြမ်းစိတ်ဖြာမှု</h4>
+                <canvas id="profit-breakdown-chart"></canvas>
+            </div>
+            
+            <div class="chart-box">
+                <h4>အရောင်းနှင့် အမြတ် ကြည့်ရှုမှု</h4>
+                <canvas id="sales-profit-chart"></canvas>
+            </div>
+        </div>
+        
+        <div class="profit-details">
+            <h4>အသေးစိတ် ခွဲခြမ်းစိတ်ဖြာမှု</h4>
+            <table class="profit-table">
+                <thead>
+                    <tr>
+                        <th>အမျိုးအစား</th>
+                        <th>အရောင်းတန်ဖိုး</th>
+                        <th>ကုန်ကျငွေ</th>
+                        <th>အမြတ်ငွေ</th>
+                        <th>အမြတ်နှုန်း</th>
+                        <th>အရောင်း ရာခိုင်နှုန်း</th>
+                    </tr>
+                </thead>
+                <tbody id="profit-details-body">
+                    <!-- Profit details will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="report-loading" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <div class="loading-text">အစီရင်ခံစာ ရယူနေပါသည်...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+<script>
+    // Set today's date as default
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('start-date').value = today;
+        document.getElementById('end-date').value = today;
+        document.getElementById('daily-date').value = today;
+        
+        // Load initial reports
+        loadDailyReport();
+        loadSummaryStats();
+        
+        // Set month and year for monthly report
+        const currentDate = new Date();
+        document.getElementById('month-select').value = currentDate.getMonth() + 1;
+        document.getElementById('year-select').value = currentDate.getFullYear();
+    });
+</script>
+{% endblock %}

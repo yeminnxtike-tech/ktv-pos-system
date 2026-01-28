@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}မီနူးနှင့် ပစ္စည်း - KTV POS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/menu.css') }}">
+{% endblock %}
+
+{% block mode %}မီနူးစီမံရန်{% endblock %}
+
+{% block content %}
+<div class="menu-page">
+    <!-- Menu Header with Actions -->
+    <div class="menu-header">
+        <div class="header-left">
+            <h2><i class="fas fa-utensils"></i> မီနူးနှင့် ပစ္စည်းစီမံခန့်ခွဲမှု</h2>
+            <p class="subtitle">ပစ္စည်းအသစ်များ ထည့်သွင်းနိုင်သည်</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary" id="add-item-btn">
+                <i class="fas fa-plus"></i> ပစ္စည်းအသစ်ထည့်ရန်
+            </button>
+            <button class="btn btn-info" id="refresh-btn">
+                <i class="fas fa-sync-alt"></i> ပြန်စစ်ရန်
+            </button>
+        </div>
+    </div>
+
+    <!-- Menu Statistics -->
+    <div class="menu-stats">
+        <div class="stat-item">
+            <div class="stat-icon active">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Active Items</h3>
+                <div class="stat-value" id="active-count">
+                    {% set active_items = items|selectattr('status', 'equalto', 'active')|list|length %}
+                    {{ active_items }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-item">
+            <div class="stat-icon low-stock">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="stat-info">
+                <h3>လက်ကျန်နည်း</h3>
+                <div class="stat-value" id="low-stock-count">
+                    {% set low_stock_items = 0 %}
+                    {% for item in items %}
+                        {% if item.stock > 0 and item.stock <= (item.min_stock or 5) %}
+                            {% set low_stock_items = low_stock_items + 1 %}
+                        {% endif %}
+                    {% endfor %}
+                    {{ low_stock_items }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-item">
+            <div class="stat-icon out-of-stock">
+                <i class="fas fa-times-circle"></i>
+            </div>
+            <div class="stat-info">
+                <h3>လက်ကျန်ကုန်</h3>
+                <div class="stat-value" id="out-of-stock-count">
+                    {% set out_of_stock_items = items|selectattr('stock', 'equalto', 0)|list|length %}
+                    {{ out_of_stock_items }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-item">
+            <div class="stat-icon total">
+                <i class="fas fa-boxes"></i>
+            </div>
+            <div class="stat-info">
+                <h3>စုစုပေါင်း</h3>
+                <div class="stat-value">{{ items|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search and Filter -->
+    <div class="filter-section">
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="menu-search" placeholder="ပစ္စည်းရှာပါ...">
+        </div>
+        
+        <div class="filter-options">
+            <select id="category-filter" class="form-control">
+                <option value="all">အားလုံး</option>
+                {% for category in categories %}
+                <option value="{{ category.name }}">{{ category.display_name }}</option>
+                {% endfor %}
+            </select>
+            
+            <select id="status-filter" class="form-control">
+                <option value="all">အခြေအနေအားလုံး</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="out_of_stock">Out of Stock</option>
+                <option value="low_stock">Low Stock</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Menu Items Table -->
+    <div class="menu-table-container">
+        <div class="table-responsive">
+            <table class="table" id="menu-table">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">စဉ်</th>
+                        <th style="width: 15%;">ပုံ</th>
+                        <th style="width: 20%;">အမည်</th>
+                        <th style="width: 15%;">Category</th>
+                        <th style="width: 10%;">ဈေးနှုန်း</th>
+                        <th style="width: 10%;">လက်ကျန်</th>
+                        <th style="width: 10%;">အခြေအနေ</th>
+                        <th style="width: 15%;">လုပ်ဆောင်ချက်များ</th>
+                    </tr>
+                </thead>
+                <tbody id="menu-items-body">
+                    {% for item in items %}
+                    <tr data-item-id="{{ item.id }}" data-category="{{ item.category_name }}" data-status="{{ item.status }}" data-stock="{{ item.stock }}">
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            <div class="item-image">
+                                {% if item.image_path %}
+                                <img src="{{ url_for('static', filename=item.image_path) }}" alt="{{ item.name }}" 
+                                     onerror="this.src='https://via.placeholder.com/60x60/1a237e/ffffff?text=No+Image'">
+                                {% else %}
+                                <div class="no-image">
+                                    <i class="fas fa-utensils"></i>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="item-name">{{ item.name }}</div>
+                            {% if item.description %}
+                            <small class="item-desc">{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="category-badge category-{{ item.category_name }}">
+                                {{ item.category_display or item.category_name }}
+                            </span>
+                        </td>
+                        <td class="text-success">{{ "{:,}".format(item.sale_price) }} Ks</td>
+                        <td>
+                            <div class="stock-info">
+                                <span class="stock-value {% if item.stock == 0 %}out-of-stock{% elif item.stock <= (item.min_stock or 5) %}low-stock{% endif %}">
+                                    {{ item.stock }} {{ item.unit or 'ခု' }}
+                                </span>
+                                {% if item.min_stock %}
+                                <small class="min-stock">(min: {{ item.min_stock }})</small>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if item.status == 'active' %}
+                            <span class="status-badge status-active">Active</span>
+                            {% elif item.status == 'inactive' %}
+                            <span class="status-badge status-inactive">Inactive</span>
+                            {% else %}
+                            <span class="status-badge status-out">Out of Stock</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="item-actions">
+                                <button class="btn btn-sm btn-info" onclick="openEditItemModal({{ item.id }})" title="ပြင်ဆင်ရန်">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-warning" onclick="updateStock({{ item.id }})" title="လက်ကျန်ပြင်ရန်">
+                                    <i class="fas fa-box"></i>
+                                </button>
+                                <button class="btn btn-sm btn-primary" onclick="uploadImage({{ item.id }})" title="ပုံထည့်ရန်">
+                                    <i class="fas fa-image"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteItem({{ item.id }})" title="ဖျက်ရန်">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                    {% if not items %}
+                    <tr>
+                        <td colspan="8" class="text-center">မီနူးပစ္စည်းများ မရှိသေးပါ</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Item Modal -->
+<div class="modal" id="item-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-utensils"></i> <span id="modal-title">ပစ္စည်းအသစ်ထည့်ရန်</span></h3>
+            <button class="modal-close" onclick="closeItemModal()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+            <form id="item-form">
+                <input type="hidden" id="item-id" name="item_id">
+                
+                <div class="form-group">
+                    <label for="item-name">ပစ္စည်းအမည် *</label>
+                    <input type="text" id="item-name" name="name" class="form-control" required>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="category">Category *</label>
+                        <select id="category" name="category_id" class="form-control" required>
+                            <option value="">Category ရွေးပါ</option>
+                            {% for category in categories %}
+                            {% if category.name != 'all' %}
+                            <option value="{{ category.id }}">{{ category.display_name }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="unit">ယူနစ်</label>
+                        <select id="unit" name="unit" class="form-control">
+                            <option value="ခု">ခု</option>
+                            <option value="ပုလင်း">ပုလင်း</option>
+                            <option value="ခွက်">ခွက်</option>
+                            <option value="ပွဲ">ပွဲ</option>
+                            <option value="ပြား">ပြား</option>
+                            <option value="လုံး">လုံး</option>
+                            <option value="ယောက်">ယောက်</option>
+                            <option value="ခန်း">ခန်း</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="sale-price">ရောင်းဈေး *</label>
+                        <input type="number" id="sale-price" name="sale_price" class="form-control" min="0" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="cost-price">ကုန်ကျဈေး</label>
+                        <input type="number" id="cost-price" name="cost_price" class="form-control" min="0">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="stock">လက်ကျန်</label>
+                        <input type="number" id="stock" name="stock" class="form-control" min="0" value="0">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="min-stock">အနည်းဆုံးလက်ကျန်</label>
+                        <input type="number" id="min-stock" name="min_stock" class="form-control" min="1" value="5">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">ဖော်ပြချက်</label>
+                    <textarea id="description" name="description" class="form-control" rows="3"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="item-status">အခြေအနေ</label>
+                    <select id="item-status" name="status" class="form-control">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="out_of_stock">Out of Stock</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeItemModal()">မလုပ်တော့ပါ</button>
+            <button class="btn btn-primary" onclick="saveItem()">သိမ်းဆည်းမည်</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/menu.js') }}"></script>
+{% endblock %}

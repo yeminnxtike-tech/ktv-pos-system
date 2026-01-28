@@ -1,0 +1,922 @@
+{% extends "base.html" %}
+
+{% block title %}အရောင်း - KTV စားသောက်ဆိုင်{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sale.css') }}">
+{% endblock %}
+
+{% block mode %}အရောင်း{% endblock %}
+
+{% block content %}
+<div class="sale-page">
+    <!-- Header -->
+    <div class="sale-header">
+        <div class="header-top">
+            <h1><i class="fas fa-shopping-cart"></i> KTV - အရောင်းစနစ်</h1>
+            
+            <div class="room-info-card" id="room-info-card">
+                <div class="room-icon">
+                    <i class="fas fa-door-closed"></i>
+                </div>
+                <div class="room-details">
+                    <div class="room-name">အခန်း: <span id="current-room">{{ selected_room.room_name if selected_room else 'မရွေးရှေးပါ' }}</span></div>
+                    <div class="room-status">အခြေအနေ: <span id="room-status">{{ selected_room.status if selected_room else 'မရွေးရှေးပါ' }}</span></div>
+                </div>
+                <div class="room-actions">
+                    <button class="btn-room-action" onclick="window.location.href='/rooms'">
+                        <i class="fas fa-arrow-left"></i> အခန်းများ
+                    </button>
+                    <button class="btn-room-action" onclick="refreshOrder()">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            
+            <div class="datetime-info">
+                <div>ရက်စွဲ: <span id="current-date">{{ now.strftime('%d-%m-%Y') if now else '၁၂-၀၃-၂၀၂၄' }}</span></div>
+                <div>အချိန်: <span id="current-time">{{ now.strftime('%H:%M') if now else '၁၄:၃၀' }}</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Info Bar -->
+    <div class="top-info-bar">
+        <div class="sale-title">
+            <h2><i class="fas fa-microphone-alt"></i> လက်ရှိအရောင်း</h2>
+        </div>
+        <div class="info-items">
+            <div class="info-item">
+                <i class="fas fa-user-tie"></i>
+                <span>ဝန်ထမ်း: <span id="staff-name">{{ current_user.full_name if current_user else 'အက်မင်' }}</span></span>
+            </div>
+            <div class="info-item">
+                <i class="fas fa-calculator"></i>
+                <span>စုစုပေါင်း: <span id="order-total-display">0</span> KS</span>
+            </div>
+            <div class="info-item">
+                <i class="fas fa-box"></i>
+                <span>စာရင်းတွင်: <span id="order-count">0</span> Items</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Actions -->
+    <div class="dashboard-actions">
+        <button class="btn-primary" id="print-bill" onclick="printBill()">
+            <i class="fas fa-print"></i> Print (F1)
+        </button>
+        <button class="btn-secondary" id="clear-order" onclick="clearOrder()">
+            <i class="fas fa-trash"></i> Clear (F6)
+        </button>
+        <button class="btn-success" id="save-order-btn" onclick="saveOrder()">
+            <i class="fas fa-save"></i> Save (F3)
+        </button>
+        <button class="btn-warning" id="checkout-btn" onclick="processCheckout()">
+            <i class="fas fa-cash-register"></i> Checkout (F2)
+        </button>
+    </div>
+
+    <!-- Main Sale Layout -->
+    <div class="sale-main-container">
+        <!-- Categories Panel -->
+        <div class="categories-panel">
+            <h3><i class="fas fa-tags"></i> Category များ</h3>
+            <div class="category-list" id="category-list">
+                {% for category in categories %}
+                <div class="category-item {% if category.name == 'all' %}active{% endif %}" 
+                     data-category="{{ category.name }}" onclick="filterCategory('{{ category.name }}')">
+                    <i class="{{ category.icon_class }}"></i>
+                    <span>{{ category.display_name }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Menu Items Panel -->
+        <div class="menu-panel">
+            <h3><i class="fas fa-hamburger"></i> Menu Items</h3>
+            <div class="menu-search-box">
+                <input type="text" id="menu-search" placeholder="Menu items ရှာပါ..." onkeyup="filterMenu()">
+                <button id="search-btn" onclick="filterMenu()"><i class="fas fa-search"></i></button>
+            </div>
+            <div class="menu-grid" id="menu-items-grid">
+                <!-- Menu items will be loaded here -->
+                <div class="loading-message">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Menu items တင်နေပါသည်...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <!-- Order Panel -->
+            <div class="order-panel">
+                <h3><i class="fas fa-list-alt"></i> Order List</h3>
+                <div class="order-table-container">
+                    <table class="order-table">
+                        <thead>
+                            <tr>
+                                <th>စဉ်</th>
+                                <th>Menu Name</th>
+                                <th>ဈေးနှုန်း</th>
+                                <th>Qty</th>
+                                <th>စုစုပေါင်း</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="order-items-body">
+                            <tr class="empty-order">
+                                <td colspan="6">
+                                    <i class="fas fa-shopping-cart"></i>
+                                    <p>အခုလောလောဆယ် Order မရှိပါ</p>
+                                    <p style="font-size: 11px;">Menu items များကို နှိပ်၍ Order ထည့်ပါ</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Checkout Panel -->
+            <div class="checkout-panel">
+                <div class="checkout-header">
+                    <h3><i class="fas fa-calculator"></i> ငွေရှင်းရန်</h3>
+                </div>
+                
+                <div class="payment-summary">
+                    <div class="summary-row">
+                        <span>Sub Total:</span>
+                        <span id="sub-total">0 KS</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Tax (5%):</span>
+                        <span id="tax-amount">0 KS</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Service (10%):</span>
+                        <span id="service-amount">0 KS</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>ကျသင့်ငွေ:</span>
+                        <span id="total-amount">0 KS</span>
+                    </div>
+                </div>
+
+                <div class="checkboxes">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="tax-checkbox" checked onchange="updateOrderSummary()">
+                        <label for="tax-checkbox">Tax ထည့်မည်</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="service-checkbox" checked onchange="updateOrderSummary()">
+                        <label for="service-checkbox">Service ထည့်မည်</label>
+                    </div>
+                </div>
+
+                <div class="checkout-actions">
+                    <button class="btn-secondary" id="go-rooms" onclick="window.location.href='/rooms'">
+                        <i class="fas fa-arrow-left"></i> အခန်းများသို့
+                    </button>
+                    <button class="btn-success" id="confirm-checkout" onclick="processCheckout()">
+                        <i class="fas fa-check-circle"></i> ငွေရှင်းမည်
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container" class="toast-container"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Global variables
+    let currentOrder = [];
+    let currentCategory = 'all';
+    let currentRoomId = {{ room_id if room_id else 'null' }};
+    let currentRoomName = '{{ selected_room.room_name if selected_room else "မရွေးရှေးပါ" }}';
+    let menuItems = [];
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Initializing sale page...');
+        
+        // Load menu items
+        loadMenuItems();
+        
+        // Load saved order if room is selected
+        if (currentRoomId) {
+            loadSavedOrder();
+        }
+        
+        // Update datetime
+        updateDateTime();
+        setInterval(updateDateTime, 60000);
+        
+        // Setup keyboard shortcuts
+        setupKeyboardShortcuts();
+        
+        // Update room display
+        updateRoomDisplay();
+    });
+
+    // Load menu items from API
+    async function loadMenuItems() {
+        try {
+            const response = await fetch('/api/menu_items');
+            const result = await response.json();
+            
+            if (result.success && result.items) {
+                menuItems = result.items;
+                renderMenuItems(menuItems);
+            } else {
+                showToast('Menu items များရယူရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading menu items:', error);
+            showToast('Server connection error', 'error');
+        }
+    }
+
+    // Render menu items to grid
+    function renderMenuItems(items) {
+        const grid = document.getElementById('menu-items-grid');
+        if (!grid) return;
+        
+        if (items.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-menu">
+                    <i class="fas fa-box-open"></i>
+                    <p>Menu items မတွေ့ပါ</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        items.forEach(item => {
+            const isLowStock = item.stock <= 5 && item.stock > 0;
+            const isOutOfStock = item.stock === 0;
+            const stockClass = isOutOfStock ? 'out-of-stock' : (isLowStock ? 'low-stock' : 'in-stock');
+            const stockText = isOutOfStock ? 'ကုန်ပြီ' : `${item.stock} ${item.unit}`;
+            
+            html += `
+                <div class="menu-item" data-category="${item.category}" data-name="${item.name.toLowerCase()}">
+                    <div class="menu-item-image">
+                        <img src="${item.image_url}" alt="${item.name}" 
+                             onerror="this.src='/static/images/default_food.png'">
+                        <div class="item-stock ${stockClass}">${stockText}</div>
+                    </div>
+                    <div class="menu-item-info">
+                        <h3 class="menu-item-name">${item.name}</h3>
+                        <div class="menu-item-price">${item.price.toLocaleString()} KS</div>
+                        <button class="add-to-order-btn" 
+                                onclick="addToOrder(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${item.price}, ${item.stock})"
+                                ${isOutOfStock ? 'disabled' : ''}>
+                            <i class="fas fa-plus"></i> Order ထည့်ရန်
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        grid.innerHTML = html;
+    }
+
+    // Filter menu items by category
+    function filterCategory(category) {
+        currentCategory = category;
+        
+        // Update active category in UI
+        document.querySelectorAll('.category-item').forEach(el => {
+            el.classList.remove('active');
+        });
+        event.target.closest('.category-item').classList.add('active');
+        
+        // Filter menu items
+        const searchTerm = document.getElementById('menu-search').value.toLowerCase();
+        filterMenuItems(searchTerm);
+    }
+
+    // Filter menu items by search term
+    function filterMenu() {
+        const searchTerm = document.getElementById('menu-search').value.toLowerCase();
+        filterMenuItems(searchTerm);
+    }
+
+    // Filter menu items based on category and search term
+    function filterMenuItems(searchTerm = '') {
+        const items = document.querySelectorAll('.menu-item');
+        
+        items.forEach(item => {
+            const category = item.dataset.category;
+            const name = item.dataset.name;
+            
+            const matchesCategory = currentCategory === 'all' || category === currentCategory;
+            const matchesSearch = !searchTerm || name.includes(searchTerm);
+            
+            if (matchesCategory && matchesSearch) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    // Add item to order
+    function addToOrder(itemId, itemName, itemPrice, itemStock) {
+        // Check if room is selected
+        if (currentRoomName === 'မရွေးရှေးပါ' || !currentRoomId) {
+            showToast('ကျေးဇူးပြု၍ အခန်းရွေးချယ်ပါ', 'error');
+            return;
+        }
+        
+        // Check stock
+        if (itemStock <= 0) {
+            showToast('ဤပစ္စည်း လက်ကျန်ကုန်နေပါသည်', 'error');
+            return;
+        }
+        
+        // Find existing item in order
+        const existingIndex = currentOrder.findIndex(item => item.id === itemId);
+        
+        if (existingIndex !== -1) {
+            // Check stock before increasing
+            if (currentOrder[existingIndex].quantity >= itemStock) {
+                showToast(`${itemName} လက်ကျန်မလုံလောက်ပါ`, 'error');
+                return;
+            }
+            currentOrder[existingIndex].quantity += 1;
+            currentOrder[existingIndex].total = currentOrder[existingIndex].quantity * itemPrice;
+        } else {
+            // Add new item
+            currentOrder.push({
+                id: itemId,
+                name: itemName,
+                price: itemPrice,
+                quantity: 1,
+                total: itemPrice,
+                stock: itemStock
+            });
+        }
+        
+        updateOrderDisplay();
+        updateOrderSummary();
+        showToast(`${itemName} ကို order ထည့်ပြီးပါပြီ`);
+    }
+
+    // Update quantity of item in order
+    function updateQuantity(index, change) {
+        if (index < 0 || index >= currentOrder.length) return;
+        
+        const item = currentOrder[index];
+        const menuItem = menuItems.find(mi => mi.id === item.id);
+        
+        if (!menuItem) {
+            showToast('Menu item not found', 'error');
+            return;
+        }
+        
+        const newQuantity = item.quantity + change;
+        
+        if (newQuantity < 1) {
+            removeFromOrder(index);
+            return;
+        }
+        
+        if (newQuantity > menuItem.stock) {
+            showToast(`${item.name} လက်ကျန်မလုံလောက်ပါ (လက်ကျန်: ${menuItem.stock})`, 'error');
+            return;
+        }
+        
+        item.quantity = newQuantity;
+        item.total = newQuantity * item.price;
+        
+        updateOrderDisplay();
+        updateOrderSummary();
+    }
+
+    // Remove item from order
+    function removeFromOrder(index) {
+        if (index >= 0 && index < currentOrder.length) {
+            currentOrder.splice(index, 1);
+            updateOrderDisplay();
+            updateOrderSummary();
+            showToast('Order မှ ပစ္စည်းဖယ်ရှားပြီးပါပြီ', 'info');
+        }
+    }
+
+    // Clear entire order
+    function clearOrder() {
+        if (currentOrder.length === 0) {
+            showToast('ဖျက်ရန် Order မရှိပါ', 'info');
+            return;
+        }
+        
+        if (confirm('လက်ရှိ Order အားလုံးကို ဖျက်မည်။ သေချာပါသလား?')) {
+            currentOrder = [];
+            updateOrderDisplay();
+            updateOrderSummary();
+            showToast('Order ဖျက်လိုက်ပါပြီ', 'info');
+        }
+    }
+
+    // Update order display in table
+    function updateOrderDisplay() {
+        const tbody = document.getElementById('order-items-body');
+        if (!tbody) return;
+        
+        if (currentOrder.length === 0) {
+            tbody.innerHTML = `
+                <tr class="empty-order">
+                    <td colspan="6">
+                        <i class="fas fa-shopping-cart"></i>
+                        <p>အခုလောလောဆယ် Order မရှိပါ</p>
+                        <p style="font-size: 11px;">Menu items များကို နှိပ်၍ Order ထည့်ပါ</p>
+                    </td>
+                </tr>
+            `;
+            document.getElementById('order-count').textContent = '0';
+            document.getElementById('order-total-display').textContent = '0';
+            return;
+        }
+        
+        let html = '';
+        let totalAmount = 0;
+        
+        currentOrder.forEach((item, index) => {
+            totalAmount += item.total;
+            html += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${item.name}</td>
+                    <td>${item.price.toLocaleString()}</td>
+                    <td>
+                        <div class="quantity-control">
+                            <button class="qty-btn minus" onclick="updateQuantity(${index}, -1)">-</button>
+                            <input type="text" class="qty-input" value="${item.quantity}" readonly>
+                            <button class="qty-btn plus" onclick="updateQuantity(${index}, 1)">+</button>
+                        </div>
+                    </td>
+                    <td>${item.total.toLocaleString()}</td>
+                    <td>
+                        <button class="remove-btn" onclick="removeFromOrder(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+        document.getElementById('order-count').textContent = currentOrder.length;
+        document.getElementById('order-total-display').textContent = totalAmount.toLocaleString();
+    }
+
+    // Update order summary (subtotal, tax, service, total)
+    function updateOrderSummary() {
+        const subtotal = currentOrder.reduce((sum, item) => sum + item.total, 0);
+        const applyTax = document.getElementById('tax-checkbox').checked;
+        const applyService = document.getElementById('service-checkbox').checked;
+        
+        const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+        const service = applyService ? Math.round(subtotal * 0.10) : 0;
+        const total = subtotal + tax + service;
+        
+        document.getElementById('sub-total').textContent = subtotal.toLocaleString() + ' KS';
+        document.getElementById('tax-amount').textContent = tax.toLocaleString() + ' KS';
+        document.getElementById('service-amount').textContent = service.toLocaleString() + ' KS';
+        document.getElementById('total-amount').textContent = total.toLocaleString() + ' KS';
+    }
+
+    // Save order to server
+    async function saveOrder() {
+        if (currentOrder.length === 0) {
+            showToast('သိမ်းဆည်းရန် order မရှိပါ', 'error');
+            return;
+        }
+        
+        if (!currentRoomId) {
+            showToast('ကျေးဇူးပြု၍ အခန်းရွေးချယ်ပါ', 'error');
+            setTimeout(() => {
+                window.location.href = '/rooms';
+            }, 1500);
+            return;
+        }
+        
+        try {
+            const orderData = {
+                room_id: currentRoomId,
+                order_items: currentOrder.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity
+                })),
+                apply_tax: document.getElementById('tax-checkbox').checked,
+                apply_service: document.getElementById('service-checkbox').checked
+            };
+            
+            const response = await fetch('/api/save_room_order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(orderData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showToast(`${currentRoomName} အခန်းအတွက် အမှာစာ သိမ်းဆည်းပြီးပါပြီ`, 'success');
+            } else {
+                showToast(result.error || 'Order သိမ်းဆည်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+            
+        } catch (error) {
+            console.error('Error saving order:', error);
+            showToast('Server connection error', 'error');
+        }
+    }
+
+    // Load saved order from server
+    async function loadSavedOrder() {
+        if (!currentRoomId) return;
+        
+        try {
+            const response = await fetch(`/api/get_room_order/${currentRoomId}`);
+            const result = await response.json();
+            
+            if (result.success && result.order) {
+                const order = result.order;
+                if (order.order_data && order.order_data.length > 0) {
+                    const loadOrder = confirm(
+                        `${currentRoomName} အခန်းအတွက် သိမ်းဆည်းထားသော Order ရှိပါသည်။\n` +
+                        `စုစုပေါင်း: ${order.total_amount?.toLocaleString() || 0} KS\n\n` +
+                        `ယခု Order ထဲသို့ ပြန်လည်ထည့်သွင်းမည်လား?\n\n` +
+                        'OK - Order ကို ပြန်လည်ထည့်သွင်းမည်\n' +
+                        'Cancel - Order အသစ်စတင်မည်'
+                    );
+                    
+                    if (loadOrder) {
+                        currentOrder = order.order_data.map(item => ({
+                            id: item.id,
+                            name: item.name,
+                            price: item.price,
+                            quantity: item.quantity,
+                            total: item.price * item.quantity
+                        }));
+                        
+                        updateOrderDisplay();
+                        updateOrderSummary();
+                        showToast('သိမ်းဆည်းထားသော Order ကို ပြန်လည်ထည့်သွင်းပြီးပါပြီ', 'info');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading saved order:', error);
+        }
+    }
+
+    // Process checkout
+    async function processCheckout() {
+        if (currentOrder.length === 0) {
+            showToast('Checkout လုပ်ရန် Order ထည့်ပါ!', 'error');
+            return;
+        }
+        
+        if (!currentRoomId) {
+            showToast('ကျေးဇူးပြု၍ အခန်းရွေးချယ်ပါ', 'error');
+            return;
+        }
+        
+        // Check stock availability
+        let hasInsufficientStock = false;
+        let insufficientItems = [];
+        
+        currentOrder.forEach(orderItem => {
+            const menuItem = menuItems.find(item => item.id === orderItem.id);
+            if (!menuItem) {
+                hasInsufficientStock = true;
+                insufficientItems.push(`${orderItem.name} (မတွေ့ပါ)`);
+            } else if (orderItem.quantity > menuItem.stock) {
+                hasInsufficientStock = true;
+                insufficientItems.push(`${orderItem.name} (လိုအပ်ချက်: ${orderItem.quantity}, လက်ကျန်: ${menuItem.stock})`);
+            }
+        });
+        
+        if (hasInsufficientStock) {
+            const message = insufficientItems.join('\n');
+            alert('အောက်ပါပစ္စည်းများ လက်ကျန်မလုံလောက်ပါ:\n\n' + message);
+            return;
+        }
+        
+        try {
+            const checkoutData = {
+                room_id: currentRoomId,
+                order_items: currentOrder.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity
+                })),
+                apply_tax: document.getElementById('tax-checkbox').checked,
+                apply_service: document.getElementById('service-checkbox').checked
+            };
+            
+            const response = await fetch('/api/checkout_sale', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(checkoutData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                printBill();
+                showCheckoutSuccessModal(result.bill_number, result.totals);
+            } else {
+                showToast(result.error || 'Checkout လုပ်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+            
+        } catch (error) {
+            console.error('Error processing checkout:', error);
+            showToast('Server connection error', 'error');
+        }
+    }
+
+    // Print bill
+    function printBill() {
+        if (currentOrder.length === 0) {
+            showToast('Print ထုတ်ရန် Order ထည့်ပါ!', 'error');
+            return;
+        }
+        
+        const printWindow = window.open('', '_blank');
+        const billContent = generateBillContent();
+        
+        printWindow.document.write(billContent);
+        printWindow.document.close();
+        
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.onafterprint = function() {
+                setTimeout(() => {
+                    printWindow.close();
+                }, 500);
+            };
+        }, 500);
+    }
+
+    // Generate bill content
+    function generateBillContent() {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('my-MM');
+        const timeStr = now.toLocaleTimeString('my-MM');
+        const billNumber = 'SW-' + now.getFullYear() + 
+                         (now.getMonth() + 1).toString().padStart(2, '0') + 
+                         now.getDate().toString().padStart(2, '0') + '-' + 
+                         Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        
+        const subtotal = currentOrder.reduce((sum, item) => sum + item.total, 0);
+        const applyTax = document.getElementById('tax-checkbox').checked;
+        const applyService = document.getElementById('service-checkbox').checked;
+        const tax = applyTax ? Math.round(subtotal * 0.05) : 0;
+        const service = applyService ? Math.round(subtotal * 0.10) : 0;
+        const total = subtotal + tax + service;
+        
+        let itemsHTML = '';
+        currentOrder.forEach((item, index) => {
+            itemsHTML += `
+                <tr>
+                    <td style="text-align: center; padding: 3px; font-size: 10px;">${index + 1}</td>
+                    <td style="text-align: left; padding: 3px 5px; font-size: 10px;">${item.name}</td>
+                    <td style="text-align: center; padding: 3px; font-size: 10px;">${item.quantity}</td>
+                    <td style="text-align: right; padding: 3px; font-size: 10px;">${item.price.toLocaleString()}</td>
+                    <td style="text-align: right; padding: 3px; font-size: 10px;">${item.total.toLocaleString()}</td>
+                </tr>
+            `;
+        });
+        
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>KTV Bill - ${billNumber}</title>
+                <style>
+                    @page { size: 80mm auto; margin: 0; }
+                    body { font-family: 'Noto Sans Myanmar', sans-serif; width: 80mm; margin: 0; padding: 10px; font-size: 10pt; }
+                    .header { text-align: center; margin-bottom: 5mm; padding-bottom: 3mm; border-bottom: 1px solid #000; }
+                    .restaurant-name { font-size: 14pt; font-weight: bold; margin: 1mm 0; }
+                    .restaurant-info { font-size: 8pt; margin: 1mm 0; }
+                    .bill-info { margin: 3mm 0; font-size: 8pt; }
+                    .bill-info-row { display: flex; justify-content: space-between; margin: 1mm 0; }
+                    .items-table { width: 100%; border-collapse: collapse; margin: 3mm 0; font-size: 8pt; }
+                    .items-table th { border: 1px solid #000; padding: 2px; background: #f0f0f0; font-weight: bold; text-align: center; }
+                    .items-table td { border: 1px solid #000; padding: 2px; }
+                    .summary { margin-top: 4mm; font-size: 9pt; }
+                    .summary-row { display: flex; justify-content: space-between; margin: 1px 0; }
+                    .total-row { border-top: 2px solid #000; padding-top: 2mm; margin-top: 2mm; font-weight: bold; }
+                    .footer { text-align: center; margin-top: 5mm; padding-top: 2mm; border-top: 1px dashed #000; font-size: 8pt; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="restaurant-name">SMILE WORLD KTV</div>
+                    <div class="restaurant-info">မြို့ရှောင်လမ်း၊ မှော်ဘီမြို့</div>
+                    <div class="restaurant-info">ဖုန်း - ၀၉-၄၂၅၅၇၃၅၉၈</div>
+                </div>
+                
+                <div class="bill-info">
+                    <div class="bill-info-row">
+                        <span>ဘေလ်အမှတ်:</span>
+                        <span>${billNumber}</span>
+                    </div>
+                    <div class="bill-info-row">
+                        <span>ရက်စွဲ:</span>
+                        <span>${dateStr} ${timeStr}</span>
+                    </div>
+                    <div class="bill-info-row">
+                        <span>အခန်း:</span>
+                        <span>${currentRoomName}</span>
+                    </div>
+                    <div class="bill-info-row">
+                        <span>ဝန်ထမ်း:</span>
+                        <span>${document.getElementById('staff-name').textContent}</span>
+                    </div>
+                </div>
+                
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 8%;">စဉ်</th>
+                            <th style="width: 52%;">Menu Name</th>
+                            <th style="width: 10%;">Qty</th>
+                            <th style="width: 15%;">ဈေးနှုန်း</th>
+                            <th style="width: 15%;">သင့်ငွေ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHTML}
+                    </tbody>
+                </table>
+                
+                <div class="summary">
+                    <div class="summary-row">
+                        <span>Sub Total:</span>
+                        <span>${subtotal.toLocaleString()} KS</span>
+                    </div>
+                    ${applyTax ? `
+                    <div class="summary-row">
+                        <span>Tax (5%):</span>
+                        <span>${tax.toLocaleString()} KS</span>
+                    </div>
+                    ` : ''}
+                    ${applyService ? `
+                    <div class="summary-row">
+                        <span>Service (10%):</span>
+                        <span>${service.toLocaleString()} KS</span>
+                    </div>
+                    ` : ''}
+                    <div class="summary-row total-row">
+                        <span>TOTAL:</span>
+                        <span>${total.toLocaleString()} KS</span>
+                    </div>
+                </div>
+                
+                <div class="footer">
+                    <div>ကျေးဇူးတင်ပါသည်။</div>
+                    <div>ကျေးဇူးပြု၍ လာရောက်ပြန်လည်ဝယ်ယူပေးပါရန်</div>
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                        }, 500);
+                    };
+                </script>
+            </body>
+            </html>
+        `;
+    }
+
+    // Show checkout success modal
+    function showCheckoutSuccessModal(billNumber, totals) {
+        const modalHTML = `
+            <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; display: flex; justify-content: center; align-items: center;">
+                <div style="background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 600px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+                    <h3 style="color: #4CAF50; margin-bottom: 20px;">
+                        <i class="fas fa-check-circle" style="color: #4CAF50; font-size: 48px; margin-bottom: 15px;"></i><br>
+                        Checkout အောင်မြင်ပါပြီ!
+                    </h3>
+                    <p style="margin-bottom: 10px; font-size: 18px; color: #333; font-weight: bold;">
+                        ${currentRoomName} အခန်း Checkout ပြုလုပ်ပြီးပါပြီ
+                    </p>
+                    <p style="margin-bottom: 15px; color: #666;">
+                        Bill Number: ${billNumber || 'N/A'}
+                    </p>
+                    
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 10px; margin: 20px 0;">
+                        <p style="margin: 5px 0; color: #333;">
+                            Total: <span style="font-weight: bold; color: #2196F3;">${totals?.total?.toLocaleString() || '0'} KS</span>
+                        </p>
+                        <p style="margin: 5px 0; color: #666; font-size: 14px;">
+                            Bill ပုံနှိပ်ပြီးပါပြီ
+                        </p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 15px; justify-content: center; margin-top: 25px;">
+                        <button onclick="window.location.href='/rooms'" style="padding: 15px 35px; background: #2196F3; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; flex: 1;">
+                            <i class="fas fa-door-open"></i> အခန်းစာမျက်နှာသို့
+                        </button>
+                        <button onclick="window.location.reload()" style="padding: 15px 35px; background: #ff9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; flex: 1;">
+                            <i class="fas fa-plus-circle"></i> Order အသစ်စမည်
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+    }
+
+    // Utility functions
+    function updateDateTime() {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('my-MM');
+        const timeStr = now.toLocaleTimeString('my-MM', { hour: '2-digit', minute: '2-digit' });
+        
+        document.getElementById('current-date').textContent = dateStr;
+        document.getElementById('current-time').textContent = timeStr;
+    }
+
+    function updateRoomDisplay() {
+        document.getElementById('current-room').textContent = currentRoomName;
+    }
+
+    function refreshOrder() {
+        loadMenuItems();
+        if (currentRoomId) {
+            loadSavedOrder();
+        }
+        showToast('Order refreshed', 'info');
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container') || 
+                         (() => { const c = document.createElement('div'); c.id = 'toast-container'; c.className = 'toast-container'; document.body.appendChild(c); return c; })();
+        
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type}`;
+        toast.textContent = message;
+        
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', function(e) {
+            // F1 - Print
+            if (e.key === 'F1') {
+                e.preventDefault();
+                printBill();
+            }
+            // F2 - Checkout
+            else if (e.key === 'F2') {
+                e.preventDefault();
+                processCheckout();
+            }
+            // F3 - Save
+            else if (e.key === 'F3') {
+                e.preventDefault();
+                saveOrder();
+            }
+            // F6 - Clear
+            else if (e.key === 'F6') {
+                e.preventDefault();
+                clearOrder();
+            }
+            // Escape - Cancel
+            else if (e.key === 'Escape') {
+                if (currentOrder.length > 0 && confirm('Order ကို ဖျက်မည်လား?')) {
+                    clearOrder();
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}

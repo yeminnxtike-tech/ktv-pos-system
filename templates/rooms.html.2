@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+
+{% block title %}အခန်းများ - KTV POS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rooms.css') }}">
+{% endblock %}
+
+{% block mode %}အခန်းစီမံရန်{% endblock %}
+
+{% block content %}
+<div class="rooms-page">
+    <!-- Rooms Header with Actions -->
+    <div class="rooms-header">
+        <div class="header-left">
+            <h2><i class="fas fa-door-closed"></i> အခန်းစီမံခန့်ခွဲမှု</h2>
+            <p class="subtitle">အခန်းအခြေအနေများ ပြောင်းလဲနိုင်သည်</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="openAddRoomModal()">
+                <i class="fas fa-plus"></i> အခန်းအသစ်ထည့်ရန်
+            </button>
+            <button class="btn btn-info" onclick="refreshRooms()">
+                <i class="fas fa-sync-alt"></i> ပြန်စစ်ရန်
+            </button>
+        </div>
+    </div>
+
+    <!-- Rooms Statistics -->
+    <div class="rooms-stats">
+        <div class="stat-item">
+            <div class="stat-icon available">
+                <i class="fas fa-door-open"></i>
+            </div>
+            <div class="stat-info">
+                <h3>လွတ်နေသော အခန်းများ</h3>
+                <div class="stat-value" id="available-count">0</div>
+            </div>
+        </div>
+        
+        <div class="stat-item">
+            <div class="stat-icon occupied">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-info">
+                <h3>သိမ်းထားသော အခန်းများ</h3>
+                <div class="stat-value" id="occupied-count">0</div>
+            </div>
+        </div>
+        
+        <div class="stat-item">
+            <div class="stat-icon reserved">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="stat-info">
+                <h3>ကြိုတင်ယူထားသော အခန်းများ</h3>
+                <div class="stat-value" id="reserved-count">0</div>
+            </div>
+        </div>
+        
+        <div class="stat-item">
+            <div class="stat-icon cleaning">
+                <i class="fas fa-broom"></i>
+            </div>
+            <div class="stat-info">
+                <h3>သန့်ရှင်းရေးလုပ်နေသော အခန်းများ</h3>
+                <div class="stat-value" id="cleaning-count">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rooms Grid -->
+    <div class="rooms-container">
+        <div class="rooms-grid" id="rooms-grid">
+            {% for room in rooms %}
+            <div class="room-card" data-room-id="{{ room.id }}" data-status="{{ room.status }}">
+                <div class="room-header">
+                    <div class="room-number">{{ room.room_number }}</div>
+                    <div class="room-status status-{{ room.status }}">
+                        {% if room.status == 'available' %}လွတ်
+                        {% elif room.status == 'occupied' %}သိမ်း
+                        {% elif room.status == 'reserved' %}ကြိုတင်
+                        {% else %}သန့်ရှင်းရေး{% endif %}
+                    </div>
+                </div>
+                
+                <div class="room-content">
+                    <h3 class="room-name">{{ room.room_name }}</h3>
+                    <div class="room-details">
+                        <div class="detail-item">
+                            <i class="fas fa-users"></i>
+                            <span>{{ room.capacity }} ဦး</span>
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-clock"></i>
+                            <span>{{ "{:,}".format(room.hourly_rate) }} Ks/နာရီ</span>
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-home"></i>
+                            <span>{{ room.room_type }}</span>
+                        </div>
+                    </div>
+                    
+                    {% if room.notes %}
+                    <div class="room-notes">
+                        <i class="fas fa-sticky-note"></i>
+                        <span>{{ room.notes[:50] }}{% if room.notes|length > 50 %}...{% endif %}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="room-actions">
+                    {% if room.status == 'available' %}
+                    <button class="btn btn-success btn-sm" onclick="selectRoom({{ room.id }}, '{{ room.room_number }}', '{{ room.room_name }}')">
+                        <i class="fas fa-check"></i> ရွေးချယ်ရန်
+                    </button>
+                    {% elif room.status == 'occupied' %}
+                    <button class="btn btn-warning btn-sm" onclick="checkoutRoom({{ room.id }})">
+                        <i class="fas fa-sign-out-alt"></i> Checkout
+                    </button>
+                    {% endif %}
+                    
+                    <button class="btn btn-secondary btn-sm" onclick="editRoom({{ room.id }})">
+                        <i class="fas fa-edit"></i> ပြင်ရန်
+                    </button>
+                    
+                    {% if room.status != 'occupied' %}
+                    <button class="btn btn-danger btn-sm" onclick="deleteRoom({{ room.id }})">
+                        <i class="fas fa-trash"></i> ဖျက်ရန်
+                    </button>
+                    {% endif %}
+                </div>
+                
+                <!-- Status Change Dropdown -->
+                <div class="status-change">
+                    <select class="form-control status-select" onchange="changeRoomStatus({{ room.id }}, this.value)">
+                        <option value="available" {% if room.status == 'available' %}selected{% endif %}>လွတ်</option>
+                        <option value="occupied" {% if room.status == 'occupied' %}selected{% endif %}>သိမ်း</option>
+                        <option value="reserved" {% if room.status == 'reserved' %}selected{% endif %}>ကြိုတင်</option>
+                        <option value="cleaning" {% if room.status == 'cleaning' %}selected{% endif %}>သန့်ရှင်းရေး</option>
+                    </select>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% if not rooms %}
+        <div class="empty-state">
+            <i class="fas fa-door-closed fa-3x"></i>
+            <h3>အခန်းများ မရှိသေးပါ</h3>
+            <p>ကျေးဇူးပြု၍ အခန်းအသစ်ထည့်သွင်းပါ</p>
+            <button class="btn btn-primary" onclick="openAddRoomModal()">
+                <i class="fas fa-plus"></i> အခန်းအသစ်ထည့်ရန်
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add/Edit Room Modal -->
+<div class="modal" id="room-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-door-closed"></i> <span id="modal-title">အခန်းအသစ်ထည့်ရန်</span></h3>
+            <button class="modal-close" onclick="closeRoomModal()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+            <form id="room-form">
+                <input type="hidden" id="room-id" name="room_id">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="room-number">အခန်းနံပါတ် *</label>
+                        <input type="text" id="room-number" name="room_number" class="form-control" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="room-name">အခန်းအမည်</label>
+                        <input type="text" id="room-name" name="room_name" class="form-control">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="room-type">အခန်းအမျိုးအစား</label>
+                        <select id="room-type" name="room_type" class="form-control">
+                            <option value="standard">Standard</option>
+                            <option value="vip">VIP</option>
+                            <option value="family">Family</option>
+                            <option value="deluxe">Deluxe</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="capacity">လူဦးရေ</label>
+                        <input type="number" id="capacity" name="capacity" class="form-control" value="4" min="1" max="20">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hourly-rate">တစ်နာရီခ</label>
+                        <input type="number" id="hourly-rate" name="hourly_rate" class="form-control" value="10000" min="0">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="room-status">အခြေအနေ</label>
+                        <select id="room-status" name="status" class="form-control">
+                            <option value="available">လွတ်</option>
+                            <option value="occupied">သိမ်း</option>
+                            <option value="reserved">ကြိုတင်</option>
+                            <option value="cleaning">သန့်ရှင်းရေး</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="notes">မှတ်ချက်</label>
+                    <textarea id="notes" name="notes" class="form-control" rows="3"></textarea>
+                </div>
+            </form>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeRoomModal()">မလုပ်တော့ပါ</button>
+            <button class="btn btn-primary" onclick="saveRoom()">သိမ်းဆည်းမည်</button>
+        </div>
+    </div>
+</div>
+
+<!-- Room Details Modal -->
+<div class="modal" id="details-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="fas fa-info-circle"></i> အခန်းအသေးစိတ်</h3>
+            <button class="modal-close" onclick="closeDetailsModal()">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+            <div id="room-details-content">
+                <!-- Dynamic content will be loaded here -->
+            </div>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeDetailsModal()">ပိတ်မည်</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/rooms.js') }}"></script>
+<script>
+    // Initialize room stats
+    function updateRoomStats() {
+        const rooms = document.querySelectorAll('.room-card');
+        let available = 0, occupied = 0, reserved = 0, cleaning = 0;
+        
+        rooms.forEach(room => {
+            const status = room.getAttribute('data-status');
+            switch(status) {
+                case 'available': available++; break;
+                case 'occupied': occupied++; break;
+                case 'reserved': reserved++; break;
+                case 'cleaning': cleaning++; break;
+            }
+        });
+        
+        document.getElementById('available-count').textContent = available;
+        document.getElementById('occupied-count').textContent = occupied;
+        document.getElementById('reserved-count').textContent = reserved;
+        document.getElementById('cleaning-count').textContent = cleaning;
+    }
+    
+    // Room selection for sale page
+    function selectRoom(roomId, roomNumber, roomName) {
+        if (confirm(`${roomNumber} - ${roomName} အခန်းကို ရွေးချယ်မှာသေချာပါသလား?`)) {
+            // Save to localStorage for sale page
+            localStorage.setItem('ktv_active_room', JSON.stringify({
+                id: roomId,
+                number: roomNumber,
+                name: roomName
+            }));
+            
+            // Redirect to sale page
+            window.location.href = "{{ url_for('sale') }}";
+        }
+    }
+    
+    // Edit room
+    function editRoom(roomId) {
+        // Fetch room details and populate form
+        fetch(`/api/room/${roomId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const room = data.room;
+                    document.getElementById('modal-title').textContent = 'အခန်းပြင်ဆင်ရန်';
+                    document.getElementById('room-id').value = room.id;
+                    document.getElementById('room-number').value = room.room_number;
+                    document.getElementById('room-name').value = room.room_name || '';
+                    document.getElementById('room-type').value = room.room_type || 'standard';
+                    document.getElementById('capacity').value = room.capacity || 4;
+                    document.getElementById('hourly-rate').value = room.hourly_rate || 10000;
+                    document.getElementById('room-status').value = room.status || 'available';
+                    document.getElementById('notes').value = room.notes || '';
+                    
+                    // Show modal
+                    document.getElementById('room-modal').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching room:', error);
+                window.ktvUtils.showToast('အခန်းအချက်အလက် ယူရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            });
+    }
+    
+    // Delete room
+    function deleteRoom(roomId) {
+        const roomCard = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+        const roomNumber = roomCard ? roomCard.querySelector('.room-number').textContent : 'ဤအခန်း';
+        
+        if (confirm(`${roomNumber} ကို ဖျက်မှာသေချာပါသလား?\n\nသတိထားရန်: အခန်းဖျက်လျှင်ယခင်အရောင်းမှတ်တမ်းများ ပျက်စီးနိုင်သည်။`)) {
+            fetch(`/api/delete_room/${roomId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.ktvUtils.showToast('အခန်းဖျက်ပြီးပါပြီ', 'success');
+                    // Remove from UI
+                    const roomElement = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+                    if (roomElement) {
+                        roomElement.remove();
+                        updateRoomStats();
+                    }
+                } else {
+                    window.ktvUtils.showToast(data.error || 'ဖျက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting room:', error);
+                window.ktvUtils.showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            });
+        }
+    }
+    
+    // Change room status
+    function changeRoomStatus(roomId, newStatus) {
+        fetch('/api/update_room_status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                room_id: roomId,
+                status: newStatus
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update UI
+                const roomCard = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+                if (roomCard) {
+                    roomCard.setAttribute('data-status', newStatus);
+                    const statusElement = roomCard.querySelector('.room-status');
+                    statusElement.className = `room-status status-${newStatus}`;
+                    
+                    // Update status text
+                    let statusText = '';
+                    switch(newStatus) {
+                        case 'available': statusText = 'လွတ်'; break;
+                        case 'occupied': statusText = 'သိမ်း'; break;
+                        case 'reserved': statusText = 'ကြိုတင်'; break;
+                        case 'cleaning': statusText = 'သန့်ရှင်းရေး'; break;
+                    }
+                    statusElement.textContent = statusText;
+                    
+                    // Update stats
+                    updateRoomStats();
+                    
+                    window.ktvUtils.showToast('အခန်းအခြေအနေ ပြောင်းလဲပြီးပါပြီ', 'success');
+                }
+            } else {
+                window.ktvUtils.showToast('အခြေအနေပြောင်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error updating room status:', error);
+            window.ktvUtils.showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        });
+    }
+    
+    // Checkout room
+    function checkoutRoom(roomId) {
+        const roomCard = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+        const roomNumber = roomCard ? roomCard.querySelector('.room-number').textContent : '';
+        
+        if (confirm(`${roomNumber} အခန်းကို Checkout လုပ်မှာသေချာပါသလား?\n\nCheckout လုပ်ပါက အခန်းလွတ်မည်ဖြစ်ပြီး ဘေလ်ပေးရန်လိုအပ်ပါသည်။`)) {
+            // In real app, this would process payment and then change status
+            changeRoomStatus(roomId, 'cleaning');
+            
+            // Show message
+            setTimeout(() => {
+                window.ktvUtils.showToast(`${roomNumber} အခန်း Checkout ပြီးပါပြီ။ သန့်ရှင်းရေးလုပ်နေပါသည်။`, 'success');
+            }, 500);
+        }
+    }
+    
+    // Open add room modal
+    function openAddRoomModal() {
+        document.getElementById('modal-title').textContent = 'အခန်းအသစ်ထည့်ရန်';
+        document.getElementById('room-form').reset();
+        document.getElementById('room-id').value = '';
+        document.getElementById('room-modal').style.display = 'block';
+    }
+    
+    // Close room modal
+    function closeRoomModal() {
+        document.getElementById('room-modal').style.display = 'none';
+    }
+    
+    // Close details modal
+    function closeDetailsModal() {
+        document.getElementById('details-modal').style.display = 'none';
+    }
+    
+    // Save room (add or update)
+    function saveRoom() {
+        const form = document.getElementById('room-form');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Convert numeric fields
+        data.capacity = parseInt(data.capacity) || 4;
+        data.hourly_rate = parseInt(data.hourly_rate) || 10000;
+        
+        const url = data.room_id ? '/api/update_room' : '/api/add_room';
+        const method = data.room_id ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.ktvUtils.showToast('အခန်းသိမ်းဆည်းပြီးပါပြီ', 'success');
+                closeRoomModal();
+                // Reload page to see changes
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                window.ktvUtils.showToast(data.error || 'သိမ်းဆည်းရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error saving room:', error);
+            window.ktvUtils.showToast('ဆာဗာနှင့်ချိတ်ဆက်ရာတွင် အမှားတစ်ခုဖြစ်နေသည်', 'error');
+        });
+    }
+    
+    // Refresh rooms
+    function refreshRooms() {
+        window.ktvUtils.showToast('အခန်းစာရင်း ပြန်စစ်နေပါသည်...', 'info');
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateRoomStats();
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const roomModal = document.getElementById('room-modal');
+            const detailsModal = document.getElementById('details-modal');
+            
+            if (event.target == roomModal) {
+                closeRoomModal();
+            }
+            if (event.target == detailsModal) {
+                closeDetailsModal();
+            }
+        };
+    });
+</script>
+{% endblock %}

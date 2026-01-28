@@ -1,0 +1,535 @@
+{% extends "base.html" %}
+
+{% block title %}ဒက်ရှ်ဘုတ် - KTV POS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+{% endblock %}
+
+{% block mode %}ဒက်ရှ်ဘုတ်{% endblock %}
+
+{% block content %}
+<div class="dashboard-page">
+    <!-- Dashboard Stats -->
+    <div class="stats-grid" id="dashboard-stats">
+        <div class="stat-card card-primary">
+            <div class="stat-icon">
+                <i class="fas fa-money-bill-wave"></i>
+            </div>
+            <div class="stat-content">
+                <h3>ယနေ့ အရောင်း</h3>
+                <div class="stat-value" id="today-sales">{{ "{:,}".format(today_sales) }} Ks</div>
+                <div class="stat-change" id="sales-change">
+                    <i class="fas fa-sync-alt fa-spin"></i>
+                    <span>တွက်ချက်နေသည်...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-card card-success">
+            <div class="stat-icon">
+                <i class="fas fa-door-closed"></i>
+            </div>
+            <div class="stat-content">
+                <h3>အခန်းများ</h3>
+                <div class="stat-value">{{ total_rooms }} <small>ခန်း</small></div>
+                <div class="stat-detail">
+                    <span class="occupied" id="occupied-rooms">{{ occupied_rooms }} သိမ်း</span>
+                    <span class="available" id="available-rooms">{{ total_rooms - occupied_rooms }} လွတ်</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-card card-warning">
+            <div class="stat-icon">
+                <i class="fas fa-box"></i>
+            </div>
+            <div class="stat-content">
+                <h3>လက်ကျန် နည်းနေ</h3>
+                <div class="stat-value">{{ low_stock_items }} <small>မျိုး</small></div>
+                <div class="stat-change warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span id="low-stock-text">{% if low_stock_items > 0 %}အရန်ဖြည့်ရန်{% else %}ပုံမှန်{% endif %}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-card card-info">
+            <div class="stat-icon">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-content">
+                <h3>ယနေ့ ဧည့်သည်</h3>
+                <div class="stat-value" id="today-customers">၀ <small>ဦး</small></div>
+                <div class="stat-change">
+                    <i class="fas fa-user-clock"></i>
+                    <span id="current-customers">ယခု ၀ ဦးရှိ</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="quick-actions card">
+        <div class="card-header">
+            <h2><i class="fas fa-bolt"></i> မြန်မြန် လုပ်ဆောင်ချက်များ</h2>
+        </div>
+        <div class="actions-grid">
+            <a href="{{ url_for('sale') }}" class="action-btn">
+                <div class="action-icon">
+                    <i class="fas fa-cash-register"></i>
+                </div>
+                <span>အရောင်း စာမျက်နှာ</span>
+                <small>အရောင်း အသစ်စလုပ်ရန်</small>
+            </a>
+            
+            <a href="{{ url_for('rooms') }}" class="action-btn">
+                <div class="action-icon">
+                    <i class="fas fa-door-open"></i>
+                </div>
+                <span>အခန်း စီမံရန်</span>
+                <small>အခန်းအခြေအနေ ပြောင်းရန်</small>
+            </a>
+            
+            <a href="{{ url_for('menu') }}" class="action-btn">
+                <div class="action-icon">
+                    <i class="fas fa-hamburger"></i>
+                </div>
+                <span>မီနူး စီမံရန်</span>
+                <small>ပစ္စည်းအသစ် ထည့်ရန်</small>
+            </a>
+            
+            <a href="#" class="action-btn" onclick="printRecentBill()">
+                <div class="action-icon">
+                    <i class="fas fa-print"></i>
+                </div>
+                <span>ဘေလ် ပြန်ရိုက်ရန်</span>
+                <small>ယခင်ဘေလ် ပြန်ရိုက်ရန်</small>
+            </a>
+            
+            <a href="{{ url_for('reports') }}" class="action-btn">
+                <div class="action-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <span>အစီရင်ခံစာ</span>
+                <small>အမြတ်အရှုံး ကြည့်ရန်</small>
+            </a>
+            
+            <a href="#" class="action-btn" onclick="showSettings()">
+                <div class="action-icon">
+                    <i class="fas fa-cog"></i>
+                </div>
+                <span>ဆက်တင်များ</span>
+                <small>စနစ် ပြင်ဆင်ရန်</small>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Recent Sales and Stats -->
+    <div class="dashboard-bottom">
+        <!-- Recent Sales -->
+        <div class="recent-sales card">
+            <div class="card-header">
+                <h2><i class="fas fa-history"></i> လတ်တလော အရောင်းများ</h2>
+                <a href="#" class="btn btn-sm" onclick="viewAllSales()">အားလုံးကြည့်ရန်</a>
+            </div>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ဘေလ်အမှတ်</th>
+                            <th>အခန်း</th>
+                            <th>ဝန်ထမ်း</th>
+                            <th>အချိန်</th>
+                            <th>စုစုပေါင်း</th>
+                            <th>အခြေအနေ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-sales-body">
+                        {% for sale in recent_sales %}
+                        <tr>
+                            <td><strong>{{ sale.bill_number }}</strong></td>
+                            <td>{{ sale.room_name or '-' }}</td>
+                            <td>{{ sale.staff_name or 'အက်မင်' }}</td>
+                            <td>{{ sale.sale_time[:5] if sale.sale_time else '' }}</td>
+                            <td class="text-success">{{ "{:,}".format(sale.total_amount) }} Ks</td>
+                            <td>
+                                {% if sale.payment_status == 'paid' %}
+                                <span class="status-badge status-paid">ပေးပြီး</span>
+                                {% elif sale.payment_status == 'pending' %}
+                                <span class="status-badge status-pending">ပေးရန်</span>
+                                {% else %}
+                                <span class="status-badge status-cancelled">ပယ်</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not recent_sales %}
+                        <tr id="no-sales-row">
+                            <td colspan="6" class="text-center">ယနေ့ မရောင်းရသေးပါ</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Quick Stats -->
+        <div class="quick-stats card">
+            <div class="card-header">
+                <h2><i class="fas fa-chart-pie"></i> စာရင်းအင်း</h2>
+                <button class="btn btn-sm btn-info" onclick="refreshStats()">
+                    <i class="fas fa-sync-alt"></i> ပြန်စစ်ရန်
+                </button>
+            </div>
+            <div class="stats-content" id="monthly-stats">
+                <div class="stat-item">
+                    <div class="stat-label">ယခုလ အရောင်း</div>
+                    <div class="stat-value" id="monthly-sales">၀ Ks</div>
+                    <div class="stat-progress">
+                        <div class="progress-bar" id="monthly-progress" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">အများဆုံးရောင်း</div>
+                    <div class="stat-value" id="top-item">-</div>
+                    <div class="stat-detail" id="top-item-detail">-</div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">ပျမ်းမျှ ဘေလ်</div>
+                    <div class="stat-value" id="avg-bill">၀ Ks</div>
+                    <div class="stat-detail" id="max-bill">အမြင့်ဆုံး: ၀ Ks</div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">အခန်း အသုံးပြုမှု</div>
+                    <div class="stat-value" id="room-usage">၀%</div>
+                    <div class="stat-progress">
+                        <div class="progress-bar" id="room-usage-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">ပျမ်းမျှ စောင့်ဆိုင်းချိန်</div>
+                    <div class="stat-value" id="avg-wait-time">၀ မိနစ်</div>
+                    <div class="stat-detail" id="wait-time-detail">ယနေ့ ပျမ်းမျှ</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <i class="fas fa-spinner fa-spin fa-3x"></i>
+        <p>ဒေတာများ ဖွင့်နေသည်...</p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script>
+    // Dashboard specific JavaScript
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load all dashboard data
+        loadDashboardData();
+        
+        // Update dashboard stats every 30 seconds
+        setInterval(loadDashboardData, 30000);
+        
+        // Real-time clock
+        function updateRealTimeClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('my-MM', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit' 
+            });
+            
+            // Update any clock elements
+            document.querySelectorAll('.real-time-clock').forEach(el => {
+                el.textContent = timeStr;
+            });
+        }
+        
+        // Add real-time clock element if not exists
+        const header = document.querySelector('.header');
+        if (header && !document.querySelector('.real-time-clock')) {
+            const clockDiv = document.createElement('div');
+            clockDiv.className = 'real-time-clock';
+            clockDiv.style.cssText = `
+                position: absolute;
+                top: 10px;
+                right: 15px;
+                background: rgba(255, 64, 129, 0.2);
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-size: 12px;
+                color: #ff4081;
+                font-weight: bold;
+            `;
+            header.style.position = 'relative';
+            header.appendChild(clockDiv);
+        }
+        
+        updateRealTimeClock();
+        setInterval(updateRealTimeClock, 1000);
+    });
+    
+    function loadDashboardData() {
+        showLoading(true);
+        
+        // Fetch dashboard stats
+        fetch('/api/dashboard_stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateDashboardStats(data);
+                }
+            })
+            .catch(error => console.error('Error loading dashboard stats:', error))
+            .finally(() => showLoading(false));
+        
+        // Fetch monthly stats
+        fetch('/api/monthly_stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateMonthlyStats(data.stats);
+                }
+            })
+            .catch(error => console.error('Error loading monthly stats:', error));
+        
+        // Fetch recent sales
+        fetch('/api/recent_sales')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateRecentSales(data.sales);
+                }
+            })
+            .catch(error => console.error('Error loading recent sales:', error));
+    }
+    
+    function updateDashboardStats(data) {
+        // Update today sales
+        const salesElement = document.getElementById('today-sales');
+        if (salesElement) {
+            salesElement.textContent = new Intl.NumberFormat('my-MM').format(data.today_sales) + ' Ks';
+        }
+        
+        // Update sales change indicator
+        const changeElement = document.getElementById('sales-change');
+        if (changeElement) {
+            // In real app, compare with yesterday
+            changeElement.innerHTML = '<i class="fas fa-chart-line"></i><span>ယမန်နေ့နှင့် နှိုင်းယှဉ်</span>';
+        }
+        
+        // Update room stats
+        const occupiedElement = document.getElementById('occupied-rooms');
+        const availableElement = document.getElementById('available-rooms');
+        if (occupiedElement && availableElement) {
+            occupiedElement.textContent = data.occupied_rooms + ' သိမ်း';
+            availableElement.textContent = (data.total_rooms - data.occupied_rooms) + ' လွတ်';
+        }
+        
+        // Update low stock text
+        const lowStockText = document.getElementById('low-stock-text');
+        if (lowStockText) {
+            lowStockText.textContent = data.low_stock_items > 0 ? 'အရန်ဖြည့်ရန်' : 'ပုံမှန်';
+        }
+        
+        // Update today customers
+        const customersElement = document.getElementById('today-customers');
+        const currentCustomers = document.getElementById('current-customers');
+        if (customersElement && currentCustomers) {
+            customersElement.innerHTML = data.today_customers + ' <small>ဦး</small>';
+            currentCustomers.textContent = 'ယနေ့စုစုပေါင်း';
+        }
+    }
+    
+    function updateMonthlyStats(stats) {
+        // Update monthly sales
+        const monthlySales = document.getElementById('monthly-sales');
+        if (monthlySales) {
+            monthlySales.textContent = new Intl.NumberFormat('my-MM').format(stats.monthly_sales) + ' Ks';
+        }
+        
+        // Update progress bar (simulated target: 5,000,000 Ks)
+        const target = 5000000;
+        const progress = Math.min((stats.monthly_sales / target) * 100, 100);
+        const progressBar = document.getElementById('monthly-progress');
+        if (progressBar) {
+            progressBar.style.width = progress + '%';
+        }
+        
+        // Update top item
+        const topItem = document.getElementById('top-item');
+        const topItemDetail = document.getElementById('top-item-detail');
+        if (topItem && topItemDetail) {
+            topItem.textContent = stats.top_item.name;
+            topItemDetail.textContent = stats.top_item.total_quantity + ' ခုရောင်း';
+        }
+        
+        // Update average and max bill
+        const avgBill = document.getElementById('avg-bill');
+        const maxBill = document.getElementById('max-bill');
+        if (avgBill && maxBill) {
+            avgBill.textContent = new Intl.NumberFormat('my-MM').format(Math.round(stats.avg_bill)) + ' Ks';
+            maxBill.textContent = 'အမြင့်ဆုံး: ' + new Intl.NumberFormat('my-MM').format(stats.max_bill) + ' Ks';
+        }
+        
+        // Update room usage
+        const roomUsage = document.getElementById('room-usage');
+        const roomUsageBar = document.getElementById('room-usage-bar');
+        if (roomUsage && roomUsageBar) {
+            roomUsage.textContent = stats.room_usage + '%';
+            roomUsageBar.style.width = stats.room_usage + '%';
+        }
+        
+        // Update wait time
+        const waitTime = document.getElementById('avg-wait-time');
+        if (waitTime) {
+            waitTime.textContent = stats.avg_wait_time + ' မိနစ်';
+        }
+    }
+    
+    function updateRecentSales(sales) {
+        const tbody = document.getElementById('recent-sales-body');
+        if (!tbody) return;
+        
+        if (sales.length === 0) {
+            tbody.innerHTML = `
+                <tr id="no-sales-row">
+                    <td colspan="6" class="text-center">ယနေ့ မရောင်းရသေးပါ</td>
+                </tr>
+            `;
+            return;
+        }
+        
+        let html = '';
+        sales.forEach(sale => {
+            const saleTime = sale.sale_time ? sale.sale_time.substring(0, 5) : '';
+            const statusClass = sale.payment_status === 'paid' ? 'status-paid' : 
+                              sale.payment_status === 'pending' ? 'status-pending' : 'status-cancelled';
+            const statusText = sale.payment_status === 'paid' ? 'ပေးပြီး' :
+                             sale.payment_status === 'pending' ? 'ပေးရန်' : 'ပယ်';
+            
+            html += `
+                <tr>
+                    <td><strong>${sale.bill_number}</strong></td>
+                    <td>${sale.room_name || '-'}</td>
+                    <td>${sale.staff_name || 'အက်မင်'}</td>
+                    <td>${saleTime}</td>
+                    <td class="text-success">${new Intl.NumberFormat('my-MM').format(sale.total_amount)} Ks</td>
+                    <td>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+    }
+    
+    function showLoading(show) {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.style.display = show ? 'flex' : 'none';
+        }
+    }
+    
+    function refreshStats() {
+        loadDashboardData();
+        window.ktvUtils.showToast('စာရင်းအင်းများ ပြန်လည်စစ်ဆေးပြီးပါပြီ', 'info');
+    }
+    
+    function viewAllSales() {
+        window.location.href = '#';
+        window.ktvUtils.showToast('အရောင်းမှတ်တမ်းစာမျက်နှာ ပြင်ဆင်နေပါသည်', 'info');
+    }
+    
+    function printRecentBill() {
+        window.ktvUtils.showToast('နောက်ဆုံးဘေလ် ရှာနေပါသည်...', 'info');
+        // In real app, this would fetch and print the most recent bill
+    }
+    
+    function showSettings() {
+        window.ktvUtils.showToast('ဆက်တင်များ စာမျက်နှာ ပြင်ဆင်နေပါသည်', 'info');
+    }
+    
+    // Export functions to window
+    window.refreshStats = refreshStats;
+    window.viewAllSales = viewAllSales;
+    window.printRecentBill = printRecentBill;
+    window.showSettings = showSettings;
+</script>
+
+<style>
+    #loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-content {
+        background: rgba(26, 35, 126, 0.9);
+        padding: 30px;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        border: 1px solid rgba(255, 64, 129, 0.3);
+    }
+    
+    .loading-content i {
+        margin-bottom: 15px;
+        color: #ff4081;
+    }
+    
+    .text-center {
+        text-align: center;
+    }
+    
+    .text-success {
+        color: #4CAF50 !important;
+        font-weight: bold;
+    }
+    
+    .status-badge {
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    
+    .status-paid {
+        background: rgba(76, 175, 80, 0.2);
+        color: #4CAF50;
+        border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+    
+    .status-pending {
+        background: rgba(255, 193, 7, 0.2);
+        color: #FFC107;
+        border: 1px solid rgba(255, 193, 7, 0.3);
+    }
+    
+    .status-cancelled {
+        background: rgba(244, 67, 54, 0.2);
+        color: #F44336;
+        border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+</style>
+{% endblock %}

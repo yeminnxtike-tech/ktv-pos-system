@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>အရောင်း - KTV စားသောက်ဆိုင်</title>
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sale.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+    <!-- External CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SweetAlert2 for better alerts -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebarToggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <div class="user-details">
+                <h3 id="sidebar-user-name">အက်မင်</h3>
+                <p>အဆင့် - အက်မင်</p>
+                <p id="login-time">လော့ဂ်အင်: ၀၈:၁၅</p>
+            </div>
+        </div>
+        
+        <ul class="nav-menu">
+            <li><a href="/"><i class="fas fa-tachometer-alt"></i> <span>ဒက်ရှ်ဘုတ်</span></a></li>
+            <li><a href="/sale" class="active"><i class="fas fa-shopping-cart"></i> <span>အရောင်း</span></a></li>
+            <li><a href="/rooms"><i class="fas fa-door-closed"></i> <span>အခန်းများ</span></a></li>
+            <li><a href="/menu"><i class="fas fa-utensils"></i> <span>မီနူးနှင့် ပစ္စည်း</span></a></li>
+            <li><a href="/stocks"><i class="fas fa-boxes"></i> <span>ပစ္စည်း အဝင်/အထွက်</span></a></li>
+            <li><a href="/reports"><i class="fas fa-chart-line"></i> <span>အမြတ်/အရှုံး</span></a></li>
+            <li><a href="#"><i class="fas fa-history"></i> <span>အရောင်းမှတ်တမ်း</span></a></li>
+        </ul>
+        
+        <div class="system-info">
+            <p><i class="fas fa-database"></i> <span>Database အရွယ် - ၀.၇ MB</span></p>
+            <div class="backup-section">
+                <button class="btn-backup"><i class="fas fa-download"></i> <span>Database ကူးယူမည်</span></button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent">
+        <div class="sale-page-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-top">
+                    <h1><i class="fas fa-microphone-alt"></i> SMILE WORLD KTV</h1>
+                    <div class="header-info">
+                        <div class="restaurant-info">
+                            <p>မြို့ရှောင်လမ်း၊ မှော်ဘီမြို့</p>
+                            <p class="contact-info">
+                                <i class="fas fa-phone"></i> ဖုန်း - ၀၉-၄၂၅၅၇၃၅၉၈ | 
+                                <i class="fas fa-database"></i> Database - ၅၈
+                            </p>
+                        </div>
+                        <div class="datetime">
+                            <div>ရက်စွဲ: <span id="current-date">၁၂-၀၃-၂၀၂၄</span></div>
+                            <div>အချိန်: <span id="current-time">၁၄:၃၀</span></div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Top Info Bar -->
+            <div class="top-info-bar">
+                <div class="sale-title">
+                    <h2><i class="fas fa-shopping-cart"></i> အရောင်း စနစ်</h2>
+                </div>
+                <div class="info-items">
+                    <div class="info-item">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span>ရက်စွဲ: <span id="current-date-info">၁၂-၀၃-၂၀၂၄</span></span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-user"></i>
+                        <span>ဝန်ထမ်း: <span id="staff-name">အက်မင်</span></span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-clock"></i>
+                        <span>အချိန်: <span id="current-time-info">၁၄:၃၀</span></span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-door-closed"></i>
+                        <span>အခန်း: <span id="current-room-display" style="color: #ff5252;">မရွေးရသေးပါ</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Room Info Section -->
+            <div id="room-info-section">
+                {% if selected_room %}
+                <div class="room-info-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 10px; margin-bottom: 15px; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h4 style="margin: 0 0 10px 0;"><i class="fas fa-door-open"></i> {{ selected_room.room_name }}</h4>
+                            <div style="display: flex; gap: 15px; font-size: 14px;">
+                                <div><i class="fas fa-hashtag"></i> အခန်းနံပါတ်: {{ selected_room.room_number }}</div>
+                                <div><i class="fas fa-tag"></i> အမျိုးအစား: {{ selected_room.room_type }}</div>
+                                <div><i class="fas fa-users"></i> လူဦးရေ: {{ selected_room.capacity }}</div>
+                                <div><i class="fas fa-clock"></i> နှုန်းထား: {{ selected_room.hourly_rate|int|format_currency }}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-light" onclick="changeRoom()" 
+                                    style="border: 1px solid white; color: white; background: transparent;">
+                                <i class="fas fa-exchange-alt"></i> အခန်းပြောင်းရန်
+                            </button>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 13px; display: flex; justify-content: space-between;">
+                        <div>
+                            <span class="badge" style="background: {% if selected_room.status == 'occupied' %}#f44336{% elif selected_room.status == 'available' %}#4CAF50{% else %}#FF9800{% endif %}">
+                                {{ selected_room.status }}
+                            </span>
+                        </div>
+                        <div style="font-style: italic;">
+                            <i class="fas fa-user-clock"></i> စတင်ချိန်: {{ current_datetime.time }}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-warning" style="margin-bottom: 15px; padding: 15px; border-radius: 8px; background: #FFF3CD; border: 1px solid #FFEEBA; color: #856404;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong style="margin-left: 8px;">အခန်းမရွေးထားပါ!</strong>
+                            <span style="margin-left: 15px;">ကျေးဇူးပြု၍ အရောင်းလုပ်ရန် အခန်းတစ်ခုရွေးပါ</span>
+                        </div>
+                        <div>
+                            <a href="/rooms" class="btn btn-sm btn-primary" 
+                               style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
+                                <i class="fas fa-door-open"></i> အခန်းရွေးရန်
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Dashboard Actions -->
+            <div class="dashboard-actions">
+                <button class="btn-primary" id="print-bill-btn">
+                    <i class="fas fa-print"></i> Print Bill
+                </button>
+                <button class="btn-secondary" id="go-rooms-btn">
+                    <i class="fas fa-door-closed"></i> အခန်းများ
+                </button>
+                <button class="btn-warning" id="checkout-btn">
+                    <i class="fas fa-cash-register"></i> Checkout
+                </button>
+                <button class="btn-success" id="save-order-btn">
+                    <i class="fas fa-save"></i> Save Order
+                </button>
+                <button class="btn-danger" id="clear-order-btn">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+                <button class="btn-info" id="refresh-menu-btn">
+                    <i class="fas fa-redo"></i> Refresh
+                </button>
+            </div>
+
+            <!-- Main Sale Layout -->
+            <div class="sale-main-container">
+                <!-- Categories Panel (Left) -->
+                <div class="categories-panel">
+                    <h3><i class="fas fa-list"></i> Category များ</h3>
+                    <div class="category-list">
+                        <div class="category-item active" data-category="all">
+                            <i class="fas fa-th"></i>
+                            <span>အားလုံး</span>
+                        </div>
+                        <div class="category-item" data-category="room">
+                            <i class="fas fa-door-closed"></i>
+                            <span>အခန်း</span>
+                        </div>
+                        <div class="category-item" data-category="beer">
+                            <i class="fas fa-beer"></i>
+                            <span>Beer</span>
+                        </div>
+                        <div class="category-item" data-category="juice">
+                            <i class="fas fa-glass-whiskey"></i>
+                            <span>Juice</span>
+                        </div>
+                        <div class="category-item" data-category="wine">
+                            <i class="fas fa-wine-glass-alt"></i>
+                            <span>အရက်</span>
+                        </div>
+                        <div class="category-item" data-category="chicken">
+                            <i class="fas fa-drumstick-bite"></i>
+                            <span>ကြက်</span>
+                        </div>
+                        <div class="category-item" data-category="prawn">
+                            <i class="fas fa-fish"></i>
+                            <span>ပုဇွန်</span>
+                        </div>
+                        <div class="category-item" data-category="pork">
+                            <i class="fas fa-bacon"></i>
+                            <span>ဝက်</span>
+                        </div>
+                        <div class="category-item" data-category="fish">
+                            <i class="fas fa-fish"></i>
+                            <span>ငါး</span>
+                        </div>
+                        <div class="category-item" data-category="seafood">
+                            <i class="fas fa-crab"></i>
+                            <span>Seafood</span>
+                        </div>
+                        <div class="category-item" data-category="drink">
+                            <i class="fas fa-wine-bottle"></i>
+                            <span>အရည်သောက်</span>
+                        </div>
+                        <div class="category-item" data-category="rice">
+                            <i class="fas fa-utensils"></i>
+                            <span>ထမင်း</span>
+                        </div>
+                        <div class="category-item" data-category="cocktail">
+                            <i class="fas fa-cocktail"></i>
+                            <span>Cocktail</span>
+                        </div>
+                        <div class="category-item" data-category="vegetable">
+                            <i class="fas fa-carrot"></i>
+                            <span>အသီးအရွက်</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Menu Items Panel (Middle) -->
+                <div class="menu-panel">
+                    <h3><i class="fas fa-utensils"></i> Menu Items</h3>
+                    <div class="menu-search-box">
+                        <input type="text" id="menu-search" placeholder="Menu ရှာပါ...">
+                        <button id="search-btn"><i class="fas fa-search"></i></button>
+                    </div>
+                    <div class="menu-grid" id="menu-items-grid">
+                        <!-- Menu items will be loaded by JavaScript -->
+                        <div class="loading-message">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Menu များ ဖွင့်နေသည်...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel (Order + Checkout) -->
+                <div class="right-panel">
+                    <!-- Order Panel -->
+                    <div class="order-panel">
+                        <div class="order-header">
+                            <h3><i class="fas fa-receipt"></i> Order List</h3>
+                            <div class="order-count">
+                                <span id="order-count">0</span> items
+                            </div>
+                        </div>
+                        <div class="order-table-container">
+                            <table class="order-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">စဉ်</th>
+                                        <th style="width: 35%;">Menu Name</th>
+                                        <th style="width: 15%;">ဈေးနှုန်း</th>
+                                        <th style="width: 15%;">Qty</th>
+                                        <th style="width: 15%;">စုစုပေါင်း</th>
+                                        <th style="width: 10%;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="order-items-body">
+                                    <tr class="empty-order">
+                                        <td colspan="6">
+                                            <div style="text-align: center; padding: 40px 20px; color: rgba(255, 255, 255, 0.7);">
+                                                <i class="fas fa-shopping-cart fa-2x"></i>
+                                                <p style="margin-top: 15px; font-size: 14px;">အခုလောလောဆယ် Order မရှိပါ</p>
+                                                <p style="font-size: 12px; margin-top: 5px;">Menu များကို နှိပ်၍ Order ထည့်ပါ</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="order-footer">
+                            <div class="customer-count">
+                                <label for="customer-count">လူဦးရေ:</label>
+                                <input type="number" id="customer-count" min="1" max="50" value="1">
+                            </div>
+                            <div class="order-notes">
+                                <input type="text" id="order-notes" placeholder="မှတ်ချက်ရေးရန်...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checkout Panel -->
+                    <div class="checkout-panel">
+                        <div class="checkout-header">
+                            <h3><i class="fas fa-calculator"></i> ငွေရှင်းရန်</h3>
+                        </div>
+                        
+                        <div class="payment-summary">
+                            <div class="summary-row">
+                                <span>စုစုပေါင်း:</span>
+                                <span id="sub-total">0 KS</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Tax (၅%):</span>
+                                <span id="tax-amount">0 KS</span>
+                            </div>
+                            <div class="summary-row">
+                                <span>Service Charge (၁၀%):</span>
+                                <span id="service-charge">0 KS</span>
+                            </div>
+                            <div class="summary-row total">
+                                <span>ကျသင့်ငွေ:</span>
+                                <span id="total-amount">0 KS</span>
+                            </div>
+                        </div>
+
+                        <div class="checkboxes">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="tax-checkbox" checked>
+                                <label for="tax-checkbox">Tax (၅%)</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="service-checkbox" checked>
+                                <label for="service-checkbox">Service (၁၀%)</label>
+                            </div>
+                        </div>
+
+                        <div class="checkout-actions">
+                            <button class="btn-success" id="save-order-btn-bottom">
+                                <i class="fas fa-save"></i> Save Order
+                            </button>
+                            <button class="btn-primary" id="final-checkout-btn">
+                                <i class="fas fa-check-circle"></i> Checkout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p>&copy; 2026 SMILE WORLD KTV. Database: <span id="db-size">0.7 MB</span> | Mode: <span id="current-mode">အရောင်း</span></p>
+                <div class="footer-links">
+                    <a href="/settings"><i class="fas fa-cog"></i> ဆက်တင်များ</a>
+                    <a href="#"><i class="fas fa-question-circle"></i> အကူအညီ</a>
+                    <a href="/logout"><i class="fas fa-sign-out-alt"></i> ထွက်မည်</a>
+                </div>
+            </footer>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/sale.js') }}"></script>
+</body>
+</html>
